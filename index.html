@@ -12397,6 +12397,50 @@ updateOnlineIndicator();
    is applied uniformly to both bases (same result mathematically).
    ──────────────────────────────────────────────────────────────────────────── */
 
+/* ─── Registration-state → concessional commission (ODS macro parity) ───
+   The source spreadsheet's GET_OD_COMMISSION / GET_TP_COMMISSION drop to lower
+   "excluded-state" commission rates for certain registration states. The web
+   derives the state from the RTO code (first two letters of the registration
+   number) and applies the same rates, identified by the CR-8811 Sr row already
+   attached to each rate object. Blank/unknown state → default rates (unchanged).
+   Note: the common bands are exact; for the heaviest GCCV bands (Sr 3.i/3.j) a
+   TP-only (IDV=0) quote in an excluded state is an approximation. */
+const MOTOR_RTO_STATE = {
+  MP:'mp', AS:'assam', KL:'kerala', TN:'tn', KA:'karnataka', CG:'chhattisgarh',
+  UP:'up', HR:'haryana', RJ:'rajasthan', OD:'odisha', OR:'odisha',
+  MH:'maharashtra', JH:'jharkhand', BR:'bihar'
+};
+function motorRegState(regNumber){
+  const m = String(regNumber||'').trim().toUpperCase().match(/^([A-Z]{2})/);
+  return m ? (MOTOR_RTO_STATE[m[1]] || '') : '';
+}
+function motorStateComm(obj, regNumber, disc){
+  const st = motorRegState(regNumber);
+  if(!st) return obj;                          // unknown/blank state → default rates
+  const has = (...s) => s.indexOf(st) >= 0;
+  let od = obj.odPct, tp = obj.tpPct, hit = false;
+  const both = r => { if(od > 0) od = r; if(tp > 0) tp = r; hit = true; };
+  switch(obj.sr){
+    // ── Two-Wheeler (flat concessional rates; these Sr rows are comprehensive) ──
+    case 'Sr 1.b': if(has('mp','assam')){ od = tp = 5; hit = true; } break;                                   // bundled ≤150cc
+    case 'Sr 1.c': if(has('kerala','tn','karnataka','chhattisgarh','mp','assam')){ od = tp = 5; hit = true; } break; // bundled 150–350cc
+    case 'Sr 1.d': if(has('kerala','assam')){ od = tp = 5; hit = true; } break;                                // bundled >350cc
+    case 'Sr 1.g': case 'Sr 1.h': if(has('mp','assam')){ od = tp = 5; hit = true; } break;                     // package ≤150cc
+    case 'Sr 1.i': case 'Sr 1.j': if(has('kerala','tn','karnataka','assam','chhattisgarh')){ od = tp = 5; hit = true; } break; // package 150–350cc
+    case 'Sr 1.k': case 'Sr 1.l': if(has('kerala','assam')){ od = tp = 2.5; hit = true; } break;              // package >350cc
+    case 'Sr 1.n': if(has('assam','mp','chhattisgarh','tn','kerala','karnataka')){ if(tp > 0) tp = 7.5; hit = true; } break; // TP-only
+    // ── GCCV (by GVW band) ──
+    case 'Sr 3.b': if(has('up','mp','tn')){ both(20); } break;                                                // 2,000–3,500 kg
+    case 'Sr 3.c': if(has('up','mp','haryana','tn','kerala')){ both(15); } break;                             // 3,500–7,500 kg
+    case 'Sr 3.d': if(has('tn')){ both(15); } break;                                                          // 7,500–10,000 kg
+    case 'Sr 3.h': if(has('rajasthan','haryana','mp','kerala','karnataka','assam')){ both(disc <= 70 ? 5 : 2.5); } break;   // 25,000–34,000 kg
+    case 'Sr 3.i': if(has('odisha','maharashtra','jharkhand','bihar')){ both(disc <= 60 ? 10 : (disc <= 70 ? 7.5 : 5)); } break; // 34,000–40,000 kg
+    case 'Sr 3.j': if(has('odisha','maharashtra','jharkhand','bihar')){ if(tp > 0) tp = 7.5; hit = true; } break; // 40,000–50,000 kg (TP only differs)
+  }
+  if(hit){ obj.odPct = od; obj.tpPct = tp; obj.label += ' · ' + st.toUpperCase() + ' state rate'; obj.stateRate = st; }
+  return obj;
+}
+
 /* ─── Commission rate lookup ─────────────────────────────────────────── */
 function getCommissionRates(q){
   const d = q.data;
@@ -12407,7 +12451,7 @@ function getCommissionRates(q){
   const term = d.policyTerm;        // '1yr' | '3yr' | '5yr'
   const disc = (typeof d.odDiscount === 'number') ? d.odDiscount : (parseFloat(d.odDiscount) || 0);
 
-  const R = (odPct, tpPct, label, sr) => ({ odPct, tpPct, label, sr: sr || '' });
+  const R = (odPct, tpPct, label, sr) => motorStateComm({ odPct, tpPct, label, sr: sr || '' }, d.regNumber, disc);
 
   // CC band for two-wheelers: slab s1/s2 = ≤150, s3 = >150–350, s4 = >350.
   // Falls back to exactCC when the slab is unhelpful.
