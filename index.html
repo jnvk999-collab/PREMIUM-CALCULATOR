@@ -5001,7 +5001,11 @@ function lookupMaxDiscount2026(){
   /* ─── GCCV ─── */
   if(vt === 'commercial'){
     if(years === null) return null;
-    const ageKey = years <= 1 ? 'new'   /* band-months: <=1 flips exactly ON the 1st birthday */ : (years <= 5 ? 'a15' : 'a6plus');
+    // ODS macro (CalculateMaxDiscount): the "1 to 5 years" GCCV band covers age < 6
+    // (macro uses `ElseIf age >= 6` for the 6+ table). So a vehicle in its 6th year
+    // (5–6 yrs) still takes the 1-5 cap. Previously this flipped at year 5, which
+    // under-discounted GCCV in year 6 by ~5 points.
+    const ageKey = years <= 1 ? 'new'   /* band-months: <=1 flips exactly ON the 1st birthday */ : (years <= 6 ? 'a15' : 'a6plus');
 
     // GCCV column rule — aligned with the global circular directive:
     //   Column 1 (wn) = expiring policy carried NCB (own renewal OR roll-over WITH NCB)
@@ -5018,7 +5022,7 @@ function lookupMaxDiscount2026(){
     const max = row[gccvCol];
     if(max === null) return { max: row.wn, col:'wn', label: `GCCV · ${gvwKey} · Brand New (NCB-N/A)` };
     const colLabel = gccvCol === 'wn' ? 'With NCB' : 'No NCB';
-    return { max, col: gccvCol, label: `GCCV · ${gvwKey} · ${ageKey==='new'?'Brand New':ageKey==='a15'?'1-5y':'6+y'} · ${colLabel}` };
+    return { max, col: gccvCol, label: `GCCV · ${gvwKey} · ${ageKey==='new'?'Brand New':ageKey==='a15'?'1-6y':'6+y'} · ${colLabel}` };
   }
 
   /* ─── TWO WHEELER — HIRE & REWARD (bike taxi) ─── */
