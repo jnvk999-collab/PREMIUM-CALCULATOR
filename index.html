@@ -13234,6 +13234,7 @@ function ohCalc(){
         +' (age '+a+', band '+HFF_BANDS[hffBandIdx(a)]+') \u00b7 '+pct+'%',amt:amt});
       base+=amt;
     });
+    const hffBasePrem=base;   // Basic Premium (members only) - LHSB is charged as a % of this
     const rst=$('ohRestore').value;
     if(rst!=='0' && HFF_RESTORE[si]){ const pc=HFF_RESTORE[si][rst==='50'?0:1];
       const amt=Math.round(base*pc/100);
@@ -13256,14 +13257,14 @@ function ohCalc(){
       const amt=Math.round(psi/100000*60*ages.length);
       rows.push({label:'Add: Personal Accident (\u20b960 per lac \u00d7 '+ages.length+')',amt:amt}); base+=amt; }
     const lh=$('ohLHSB').value;
-    if(lh!=='0'){ const pc=(lh==='A')?3:5; const amt=Math.round(base*pc/100);
-      rows.push({label:'Add: Life Hardship Survival Benefit \u2014 Plan '+lh+' ('+pc+'%)',amt:amt}); base+=amt; }
+    if(lh!=='0'){ const pc=(lh==='A')?3:5; const amt=Math.round(hffBasePrem*pc/100);
+      rows.push({label:'Add: Life Hardship Survival Benefit \u2014 Plan '+lh+' ('+pc+'% of Basic Premium)',amt:amt}); base+=amt; }
   }
 
-  /* GST: individual health cover (Oriental Mediclaim Individual, Happy Family
-     Floater, OSSS, Youth Eco Care) is exempt w.e.f. 22.09.2025. Group Mediclaim
-     and the Overseas Mediclaim (travel) policy remain taxable at 18%. */
-  const gstApplies = (prod==='GRP' || prod==='OMI');
+  /* GST: all health cover (Oriental Mediclaim Individual, Group Mediclaim,
+     Happy Family Floater, OSSS, Youth Eco Care) is treated as GST-exempt.
+     Only the Overseas Mediclaim (travel) policy remains taxable at 18%. */
+  const gstApplies = (prod==='OMI');
   const gst = gstApplies ? Math.round(base*0.18) : 0;
   let h='<table style="width:100%;font-size:13px;border-collapse:collapse">';
   rows.forEach(r=>{ h+='<tr style="border-bottom:1px solid var(--border-soft)"><td style="padding:5px 0">'+r.label
@@ -13275,7 +13276,7 @@ function ohCalc(){
     h+='<tr style="font-weight:800;font-size:15px"><td style="padding:7px 0">Total payable</td><td style="text-align:right">\u20b9'+ohFmt(base+gst)+'</td></tr></table>';
   } else {
     h+='<tr style="font-weight:800;font-size:15px"><td style="padding:7px 0">Total premium</td><td style="text-align:right">\u20b9'+ohFmt(base)+'</td></tr></table>';
-    notes.push('No GST \u2014 individual health insurance is exempt w.e.f. 22.09.2025.');
+    notes.push('No GST \u2014 health insurance premium is exempt.');
   }
   if(notes.length) h+='<div class="hint" style="margin-top:8px">'+notes.map(n=>'\u2022 '+n).join('<br>')+'</div>';
   out.innerHTML=h;
