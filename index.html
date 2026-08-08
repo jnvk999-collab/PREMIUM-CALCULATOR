@@ -3102,17 +3102,17 @@ select{background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http
   <div class="card">
     <div class="section-label">Policy Type</div>
     <div class="segmented cols-3">
-      <input type="radio" name="policy" id="pol-sookshma" checked>
+      <input type="radio" name="fire-policy" id="pol-sookshma" checked>
       <label for="pol-sookshma" onclick="FIRE.setPolicy('sookshma')">
         Sookshma
         <small>upto ₹5 Cr</small>
       </label>
-      <input type="radio" name="policy" id="pol-laghu">
+      <input type="radio" name="fire-policy" id="pol-laghu">
       <label for="pol-laghu" onclick="FIRE.setPolicy('laghu')">
         Laghu
         <small>upto ₹50 Cr</small>
       </label>
-      <input type="radio" name="policy" id="pol-tariff">
+      <input type="radio" name="fire-policy" id="pol-tariff">
       <label for="pol-tariff" onclick="FIRE.setPolicy('tariff')">
         Tariff / Treaty
         <small>above ₹50 Cr</small>
@@ -4505,6 +4505,7 @@ $('regDateText').addEventListener('input', e=>{
   if(iso){
     $('regDate').value = iso;
     resetIncDateToToday();
+    autoBundleForNewVehicle();
     updateAgeBadge();
     renderAddons();
     autoApplySipDiscount();
@@ -5511,6 +5512,42 @@ function updateZoneHint(){
 }
 
 /* ─── Render terms ──────────────────────────────────────────── */
+/* ── Brand-new vehicle → auto-select the bundled long-term Package ──
+   When the registration date is today (a vehicle bought today), Private Car and
+   Two-Wheeler are sold as a bundled 1+3 / 1+5 package. Auto-select Comprehensive
+   (Package) with a 3-yr term for Private Car and a 5-yr term for Two-Wheeler.
+   Only fires for a today's-date registration and only for these two classes;
+   the user can still override the term afterwards. */
+function autoBundleForNewVehicle(){
+  const vt = state.vehicleType;
+  if(vt !== 'privateCar' && vt !== 'twoWheeler') return false;   // only these two classes
+  const iso = ($('regDate') || {}).value;
+  const t = new Date();
+  const todayIso = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+  const isToday = !!iso && iso === todayIso;
+  const bundledTerm = (vt === 'privateCar') ? '3yr' : '5yr';     // 1+3 car · 1+5 two-wheeler
+  let changed = false;
+  if(isToday){
+    // Brand-new vehicle → bundled long-term Package (Comprehensive + 3/5 yr).
+    if($('polComp') && !$('polComp').checked){ $('polComp').checked = true; changed = true; }
+    if(state.policyTerm !== bundledTerm){ state.policyTerm = bundledTerm; changed = true; }
+  } else if(state.policyTerm === bundledTerm){
+    // Not registered today (a renewal / used vehicle) → don't leave a stale bundled
+    // long-term term behind; fall back to a 1-year term.
+    state.policyTerm = '1yr';
+    changed = true;
+  }
+  if(changed){
+    renderTerms();
+    renderAddons();
+    updateInvoiceValueField();
+    syncTpTermRow();
+    updateDiscountHint();
+    autoApplySipDiscount();
+  }
+  return changed;
+}
+
 function renderTerms(){
   const polType = $('polOD').checked ? 'odOnly' : ($('polTP').checked ? 'thirdParty' : 'comprehensive');
   let terms;
@@ -6027,6 +6064,7 @@ document.querySelectorAll('.vehicle-tab').forEach(btn=>{
     _sipManualOverride = false;
     updatePassengerField();
     updateAll();
+    autoBundleForNewVehicle();
     updatePaUnSiChips();
     scheduleAutoCalc();
   });
@@ -6037,6 +6075,7 @@ document.querySelectorAll('input[name="twUse"]').forEach(r=>{
     state.vehicleType = r.value==='hire' ? 'twoWheelerHire' : 'twoWheeler';
     updatePassengerField();
     updateAll();
+    autoBundleForNewVehicle();
     updatePaUnSiChips();
     scheduleAutoCalc();
   });
@@ -6374,7 +6413,7 @@ document.querySelectorAll('input[name="policy"]').forEach(r=>{
 });
 
 $('regNumber').addEventListener('input', e=>{ e.target.value = e.target.value.toUpperCase(); });
-$('regDate').addEventListener('change', ()=>{ updateAgeBadge(); renderAddons(); refreshEpCcBadge(); updateDiscountHint(); scheduleAutoCalc(); });
+$('regDate').addEventListener('change', ()=>{ autoBundleForNewVehicle(); updateAgeBadge(); renderAddons(); refreshEpCcBadge(); updateDiscountHint(); scheduleAutoCalc(); });
 
 function updateAgeBadge(){
   const m = getAgeMonths();                 // band age (flips on anniversary)
@@ -9391,6 +9430,9 @@ updateAll();
 updatePaUnSiChips();
 updateAgeBadge();
 updatePaUnPreview();
+autoBundleForNewVehicle();   // brand-new (today) Private Car / Two-Wheeler → bundled 1+3 / 1+5
+// Re-run deferred so it also lands after any late init that resets the policy radios.
+setTimeout(autoBundleForNewVehicle, 0);
 
 /* ================================================================
    PRODUCT TAB SWITCHER
