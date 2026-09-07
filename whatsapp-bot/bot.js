@@ -36,9 +36,18 @@ const CFG = {
   autoMergePdf: process.env.AUTO_PDF !== '0',
 };
 
+// WhatsApp changes its web app often and whatsapp-web.js sometimes stalls after
+// the QR scan on a version it has not seen yet. Pinning a known-good web version
+// (served from the wa-version archive) is the standard fix. Override with
+// WA_WEB_VERSION=... in .env if a different one is needed later.
+const WA_WEB_VERSION = process.env.WA_WEB_VERSION || '2.2412.54';
 const client = new Client({
   authStrategy: new LocalAuth({ dataPath: path.resolve(__dirname, '.wwebjs_auth') }),
   puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] },
+  webVersionCache: {
+    type: 'remote',
+    remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/${WA_WEB_VERSION}.html`,
+  },
 });
 
 async function contactLabel(msg) {
@@ -125,8 +134,21 @@ client.on('qr', qr => {
   console.log('==============================================\n');
   qrcode.generate(qr, { small: true });
 });
-client.on('authenticated', () => { try { fs.unlinkSync(path.resolve(__dirname, 'qr.png')); } catch {} });
+client.on('authenticated', () => {
+  try { fs.unlinkSync(path.resolve(__dirname, 'qr.png')); } catch {}
+  console.log('[whatsapp] login accepted, loading your chats... (this can take 1-2 minutes)');
+});
+client.on('loading_screen', (pct) => console.log(`[whatsapp] loading ${pct}%`));
+client.on('change_state', (st) => console.log('[whatsapp] state: ' + st));
+let readySeen = false;
+setTimeout(() => {
+  if (readySeen) return;
+  console.log('\n[whatsapp] still not ready after 3 minutes. Press Ctrl+C, then delete the folders');
+  console.log('           .wwebjs_auth and .wwebjs_cache inside the whatsapp-bot folder, run node bot.js');
+  console.log('           again and scan the QR once more.\n');
+}, 3 * 60 * 1000);
 client.on('ready', () => {
+  readySeen = true;
   console.log(`Ready. Inbox: ${org.ROOT}  merge wait: ${CFG.mergeWaitSeconds}s  groups: ${CFG.replyInGroups ? (CFG.allowGroups.join(', ') || 'all') : 'off'}`);
   printGroups();
 });
