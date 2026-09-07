@@ -29,6 +29,8 @@ WhatsApp (your number, linked like WhatsApp Web)
                                                 like the built-in self-test does
 ```
 
+**Which calculator does it price with?** In this order: the `CALCULATOR_HTML` setting in `.env` (a file path or a URL such as `https://nvkoicl.github.io/PREMIUM-CALCULATOR/`), otherwise `../index.html` if the bot folder sits inside a calculator folder, otherwise the published site above. Verified against build v82 of the published calculator: the smoke test passes with it unchanged.
+
 The important design choice: **the bot does not re-implement any rating logic.** It opens `index.html` once in headless Chromium and drives it the same way the calculator's own 700-case regression suite does. When you upload a new `index.html` with new rates, the bot prices with the new rates on its next quote. The smoke test proves this by checking one of the calculator's golden cases (₹1,915) through the bot's driver.
 
 ## Setup (on the PC or small server that will stay on)

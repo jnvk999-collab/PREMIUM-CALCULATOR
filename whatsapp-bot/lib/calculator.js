@@ -10,7 +10,21 @@
 const path = require('path');
 const { chromium } = require('playwright');
 
-const INDEX = 'file://' + path.resolve(__dirname, '..', '..', 'index.html');
+const fs = require('fs');
+
+// Where the calculator lives. In order:
+//   1. CALCULATOR_HTML env (a file path or an https:// URL)
+//   2. ../index.html (the bot folder sits inside the calculator folder)
+//   3. the published GitHub Pages site
+const LIVE_URL = 'https://nvkoicl.github.io/PREMIUM-CALCULATOR/';
+function resolveIndex() {
+  const env = process.env.CALCULATOR_HTML;
+  if (env) return /^https?:\/\//i.test(env) ? env : 'file://' + path.resolve(env);
+  const local = path.resolve(__dirname, '..', '..', 'index.html');
+  if (fs.existsSync(local)) return 'file://' + local;
+  return LIVE_URL;
+}
+const INDEX = resolveIndex();
 
 let browser = null;
 let page = null;
@@ -20,7 +34,8 @@ async function getPage() {
   browser = await chromium.launch({ headless: true });
   page = await browser.newPage();
   page.on('pageerror', e => console.error('[calculator page error]', e.message));
-  await page.goto(INDEX);
+  console.log('[calculator] using ' + INDEX);
+  await page.goto(INDEX, { waitUntil: 'load', timeout: 60000 });
   await page.waitForFunction(
     () => typeof calculate === 'function' && typeof generatePDF === 'function' && window.jspdf,
     null, { timeout: 30000 }
