@@ -1,0 +1,133 @@
+/**
+ * WhatsApp automation for the OIC Premium Calculator.
+ *
+ *   photos in  -> saved to inbox/<contact>/<date>/, merged into one PDF, sent back
+ *   "quote ..." -> parsed, priced by the real calculator (headless), reply + PDF
+ *   "pdf"       -> merge whatever photos are waiting right now
+ *   "help"      -> usage text
+ *
+ * Uses whatsapp-web.js: it links to YOUR WhatsApp number like WhatsApp Web
+ * (scan the QR once). See README.md for the trade-offs vs the official
+ * WhatsApp Business Cloud API.
+ */
+try { require('dotenv').config(); } catch {}
+const path = require('path');
+const fs = require('fs');
+const qrcode = require('qrcode-terminal');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+
+const calc = require('./lib/calculator');
+const { parseQuote, isQuoteRequest } = require('./lib/intents');
+const { mergeImagesToPdf, PhotoBatcher } = require('./lib/pdfMerge');
+const org = require('./lib/organise');
+const { quoteText, missingText, HELP } = require('./lib/reply');
+
+const CFG = {
+  agentName: process.env.AGENT_NAME || '',
+  mergeWaitSeconds: parseInt(process.env.MERGE_WAIT_SECONDS || '45', 10),
+  replyInGroups: process.env.REPLY_IN_GROUPS === '1',
+  // comma-separated numbers (country code, digits only). Empty = reply to everyone.
+  allowList: (process.env.ALLOW_NUMBERS || '').split(',').map(s => s.trim()).filter(Boolean),
+  autoReplyQuotes: process.env.AUTO_QUOTE !== '0',
+  autoMergePdf: process.env.AUTO_PDF !== '0',
+};
+
+const client = new Client({
+  authStrategy: new LocalAuth({ dataPath: path.resolve(__dirname, '.wwebjs_auth') }),
+  puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] },
+});
+
+async function contactLabel(msg) {
+  try {
+    const c = await msg.getContact();
+    const num = (c.number || msg.from.split('@')[0]);
+    return (c.name || c.pushname) ? `${c.name || c.pushname} (${num})` : num;
+  } catch { return msg.from.split('@')[0]; }
+}
+
+const batcher = new PhotoBatcher({
+  waitSeconds: CFG.mergeWaitSeconds,
+  onFlush: async (chatId, files) => {
+    const label = files[0].label;
+    const paths = files.map(f => f.path);
+    try {
+      const { bytes, pages, skipped } = await mergeImagesToPdf(paths, { label: label.replace(/\s*\(.*\)$/, ''), title: `Photos from ${label}` });
+      const name = `photos_${org.safeName(label).replace(/\s+/g, '_')}_${Date.now()}.pdf`;
+      const out = org.saveOutput(label, name, Buffer.from(bytes), { pages, source: paths.length });
+      const media = MessageMedia.fromFilePath(out);
+      let caption = `Merged ${pages} photo${pages === 1 ? '' : 's'} into one PDF.`;
+      if (skipped.length) caption += ` Skipped ${skipped.length} file(s) that were not JPEG/PNG.`;
+      await client.sendMessage(chatId, media, { caption, sendMediaAsDocument: true });
+      console.log(`[pdf] ${label}: ${pages} pages -> ${out}`);
+    } catch (e) {
+      console.error('[pdf] merge failed', e);
+      await client.sendMessage(chatId, 'Sorry, could not merge those photos. They are saved and I will do it manually.');
+    }
+  },
+});
+
+function allowed(msg) {
+  if (msg.fromMe) return false;
+  if (msg.from.endsWith('@g.us') && !CFG.replyInGroups) return false;
+  if (msg.from === 'status@broadcast') return false;
+  if (CFG.allowList.length && !CFG.allowList.includes(msg.from.split('@')[0])) return false;
+  return true;
+}
+
+async function handleQuote(msg, text, label) {
+  const { input, missing } = parseQuote(text);
+  if (missing.length) {
+    org.log({ type: 'quote-incomplete', contact: label, text, missing });
+    return msg.reply(missingText(missing));
+  }
+  const res = await calc.motorQuote(input);
+  if (!res.ok) {
+    org.log({ type: 'quote-error', contact: label, text, errors: res.errors });
+    return msg.reply('Could not calculate: ' + res.errors.join('; ') + '\n\n' + missingText([]));
+  }
+  const pdfPath = org.saveOutput(label, res.filename, Buffer.from(res.pdfBase64, 'base64'), { total: res.summary.total, text });
+  await msg.reply(quoteText(res.summary, CFG.agentName));
+  await client.sendMessage(msg.from, MessageMedia.fromFilePath(pdfPath), { sendMediaAsDocument: true });
+  org.log({ type: 'quote', contact: label, text, input, total: res.summary.total, file: path.basename(pdfPath) });
+  console.log(`[quote] ${label}: "${text}" -> ₹${res.summary.total}`);
+}
+
+client.on('qr', qr => { console.log('Scan this QR with WhatsApp > Linked devices:'); qrcode.generate(qr, { small: true }); });
+client.on('ready', () => console.log(`Ready. Inbox: ${org.ROOT}  merge wait: ${CFG.mergeWaitSeconds}s  groups: ${CFG.replyInGroups}`));
+client.on('auth_failure', m => console.error('Auth failure', m));
+client.on('disconnected', r => { console.error('Disconnected:', r); process.exit(1); });
+
+client.on('message', async msg => {
+  if (!allowed(msg)) return;
+  const label = await contactLabel(msg);
+  const text = (msg.body || '').trim();
+
+  try {
+    if (msg.hasMedia) {
+      const media = await msg.downloadMedia();
+      if (!media) return;
+      const file = org.saveMedia(label, media, { caption: text, from: msg.from });
+      if (CFG.autoMergePdf && /^image\//.test(media.mimetype)) {
+        const n = batcher.add(msg.from, { path: file, label });
+        if (n === 1) await msg.reply(`Got it. I will merge the photos into one PDF in ${CFG.mergeWaitSeconds}s (send *pdf* to do it now).`);
+      }
+      // a photo captioned with a quote request still gets a quote
+      if (CFG.autoReplyQuotes && isQuoteRequest(text)) await handleQuote(msg, text, label);
+      return;
+    }
+
+    if (/^(pdf|merge|done)$/i.test(text)) {
+      if (!batcher.pending(msg.from)) return msg.reply('No photos waiting. Send the photos first, then *pdf*.');
+      return batcher.flush(msg.from);
+    }
+    if (/^(help|hi|hello|menu|start)$/i.test(text)) return msg.reply(HELP);
+    if (CFG.autoReplyQuotes && isQuoteRequest(text)) return handleQuote(msg, text, label);
+
+    org.log({ type: 'text', contact: label, text });
+  } catch (e) {
+    console.error('[handler]', e);
+  }
+});
+
+process.on('SIGINT', async () => { await calc.close(); await client.destroy(); process.exit(0); });
+client.initialize();
