@@ -33,6 +33,9 @@ const CFG = {
   // In groups this is checked against the person who wrote the message.
   allowList: (process.env.ALLOW_NUMBERS || '').split(',').map(s => s.trim()).filter(Boolean),
   autoReplyQuotes: process.env.AUTO_QUOTE !== '0',
+  // When a quote request is missing details: '1' = ask the customer for them,
+  // '0' (default) = stay silent to the customer and notify you instead.
+  askCustomerForMissing: process.env.ASK_FOR_MISSING === '1',
   autoMergePdf: process.env.AUTO_PDF !== '0',
 };
 
@@ -99,6 +102,14 @@ async function allowed(msg) {
   return true;
 }
 
+// Sends a note to your own number (the "message yourself" chat in WhatsApp).
+async function notifyOwner(text) {
+  try {
+    const me = client.info && client.info.wid && client.info.wid._serialized;
+    if (me) await client.sendMessage(me, '🤖 ' + text);
+  } catch (e) { console.error('[notify] ' + e.message); }
+}
+
 async function printGroups() {
   try {
     const groups = (await client.getChats()).filter(c => c.isGroup).map(c => c.name);
@@ -112,12 +123,14 @@ async function handleQuote(msg, text, label) {
   const { input, missing } = parseQuote(text);
   if (missing.length) {
     org.log({ type: 'quote-incomplete', contact: label, text, missing });
-    return msg.reply(missingText(missing));
+    if (CFG.askCustomerForMissing) return msg.reply(missingText(missing));
+    // Say nothing to the customer; drop a note in your own chat so you handle it personally.
+    return notifyOwner(`Quote request from ${label} needs your reply:\n"${text}"\n(missing: ${missing.join(', ')})`);
   }
   const res = await calc.motorQuote(input);
   if (!res.ok) {
     org.log({ type: 'quote-error', contact: label, text, errors: res.errors });
-    return msg.reply('Could not calculate: ' + res.errors.join('; ') + '\n\n' + missingText([]));
+    return notifyOwner(`Could not auto-quote for ${label}: "${text}"\n${res.errors.join('; ')}`);
   }
   const pdfPath = org.saveOutput(label, res.filename, Buffer.from(res.pdfBase64, 'base64'), { total: res.summary.total, text });
   await msg.reply(quoteText(res.summary, CFG.agentName));
