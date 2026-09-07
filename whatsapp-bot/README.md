@@ -33,6 +33,12 @@ The important design choice: **the bot does not re-implement any rating logic.**
 
 ## Setup (on the PC or small server that will stay on)
 
+**Windows:** double-click `setup.bat` once (installs everything, runs the self-test, creates `.env`). Edit `.env` in Notepad. Then double-click `start.bat` and scan the QR (also saved as `qr.png` in this folder).
+
+**Mac / Linux:** run `./setup.sh` once, edit `.env`, then `./start.sh`.
+
+By hand, the same thing is:
+
 ```bash
 cd whatsapp-bot
 npm install

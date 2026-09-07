@@ -14,6 +14,7 @@ try { require('dotenv').config(); } catch {}
 const path = require('path');
 const fs = require('fs');
 const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 const calc = require('./lib/calculator');
@@ -92,7 +93,16 @@ async function handleQuote(msg, text, label) {
   console.log(`[quote] ${label}: "${text}" -> ₹${res.summary.total}`);
 }
 
-client.on('qr', qr => { console.log('Scan this QR with WhatsApp > Linked devices:'); qrcode.generate(qr, { small: true }); });
+client.on('qr', qr => {
+  const png = path.resolve(__dirname, 'qr.png');
+  QRCode.toFile(png, qr, { width: 400 }).catch(() => {});
+  console.log('\n==============================================');
+  console.log('Open WhatsApp on your phone > Linked devices > Link a device');
+  console.log('and scan the QR below, or open this image: ' + png);
+  console.log('==============================================\n');
+  qrcode.generate(qr, { small: true });
+});
+client.on('authenticated', () => { try { fs.unlinkSync(path.resolve(__dirname, 'qr.png')); } catch {} });
 client.on('ready', () => console.log(`Ready. Inbox: ${org.ROOT}  merge wait: ${CFG.mergeWaitSeconds}s  groups: ${CFG.replyInGroups}`));
 client.on('auth_failure', m => console.error('Auth failure', m));
 client.on('disconnected', r => { console.error('Disconnected:', r); process.exit(1); });
