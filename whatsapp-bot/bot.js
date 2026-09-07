@@ -36,19 +36,20 @@ const CFG = {
   autoMergePdf: process.env.AUTO_PDF !== '0',
 };
 
-// WhatsApp changes its web app often and whatsapp-web.js sometimes stalls after
-// the QR scan on a version it has not seen yet. Pinning a known-good web version
-// (served from the wa-version archive) is the standard fix. Override with
-// WA_WEB_VERSION=... in .env if a different one is needed later.
-const WA_WEB_VERSION = process.env.WA_WEB_VERSION || '2.2412.54';
-const client = new Client({
+// whatsapp-web.js loads the current WhatsApp Web build itself. Set WA_WEB_VERSION
+// in .env only if support tells you to pin a specific build.
+const clientOpts = {
   authStrategy: new LocalAuth({ dataPath: path.resolve(__dirname, '.wwebjs_auth') }),
   puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] },
-  webVersionCache: {
+};
+if (process.env.WA_WEB_VERSION) {
+  clientOpts.webVersion = process.env.WA_WEB_VERSION;
+  clientOpts.webVersionCache = {
     type: 'remote',
-    remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/${WA_WEB_VERSION}.html`,
-  },
-});
+    remotePath: `https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/${process.env.WA_WEB_VERSION}.html`,
+  };
+}
+const client = new Client(clientOpts);
 
 async function contactLabel(msg) {
   try {
@@ -162,8 +163,9 @@ client.on('message', async msg => {
 
   try {
     if (msg.hasMedia) {
-      const media = await msg.downloadMedia();
-      if (!media) return;
+      let media = null;
+      try { media = await msg.downloadMedia(); } catch (e) { console.error(`[media] could not download from ${label}: ${e.message}`); }
+      if (!media) { org.log({ type: 'media-failed', contact: label, caption: text }); return; }
       const file = org.saveMedia(label, media, { caption: text, from: msg.from });
       if (CFG.autoMergePdf && /^image\//.test(media.mimetype)) {
         const n = batcher.add(msg.from, { path: file, label });
@@ -183,7 +185,7 @@ client.on('message', async msg => {
 
     org.log({ type: 'text', contact: label, text });
   } catch (e) {
-    console.error('[handler]', e);
+    console.error(`[handler] ${label}: ${e.message}`);
   }
 });
 
