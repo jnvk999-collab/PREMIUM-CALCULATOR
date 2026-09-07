@@ -1,5 +1,4 @@
-.wwebjs_auth/
-.wwebjs_cache/
+baileys_auth/
 node_modules/
 inbox/
 .env

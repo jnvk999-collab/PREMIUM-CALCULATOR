@@ -18,7 +18,7 @@ Every incoming file and every outgoing PDF is written to `inbox/`, so the inbox 
 
 ```
 WhatsApp (your number, linked like WhatsApp Web)
-        │  whatsapp-web.js
+        │  Baileys (direct connection, no browser)
         ▼
      bot.js ─── photo ───▶ lib/organise.js  (save)  ──▶ lib/pdfMerge.js (pdf-lib) ──▶ reply with PDF
         │
@@ -44,14 +44,13 @@ By hand, the same thing is:
 ```bash
 cd whatsapp-bot
 npm install
-npx puppeteer browsers install chrome     # browser for the WhatsApp link (one time)
-npx playwright install chromium           # browser for the calculator (one time)
+npx playwright install chromium           # only needed for AUTO_QUOTE=1 (one time)
 cp .env.example .env                      # then edit AGENT_NAME etc.
 npm test                                  # should end with ALL OK
 npm start                                 # scan the QR with WhatsApp > Linked devices
 ```
 
-Keep it running with `pm2 start bot.js --name oic-bot` or a systemd unit. The QR scan is needed once; the session is kept in `.wwebjs_auth/`.
+Keep it running with `pm2 start bot.js --name oic-bot` or a systemd unit. The QR scan is needed once; the login is kept in `baileys_auth/`. If the phone logs the device out, delete that folder and scan again.
 
 Settings (`.env`):
 
@@ -69,13 +68,13 @@ Settings (`.env`):
 
 ## Which WhatsApp connection to use
 
-**This prototype uses `whatsapp-web.js`** because it works with the number you already use: customers keep messaging you, the bot answers from the same chat. It is the only option where "someone sends me photos" reaches the bot without changing your number.
+**This bot uses Baileys**, an actively maintained open-source library that speaks WhatsApp's own protocol from your number, the same way WhatsApp Web does. It was chosen after whatsapp-web.js (browser automation) stopped being able to download photos on current WhatsApp Web builds.
 
 Be aware:
-- It is an unofficial library that automates WhatsApp Web. Meta can ban numbers that look automated. Start with `ALLOW_NUMBERS` set to a few known contacts, keep replies human-paced (the bot already replies once per burst, not per photo), and consider a **separate SIM** for the bot once you trust it.
-- It needs a machine that stays on with a browser (any laptop, a ₹3,000 mini PC, or a small cloud VM). Phone must stay connected to the internet.
+- It is unofficial. Meta can ban numbers that look automated. This bot never messages anyone except you by default (`PDF_TO=me`), which keeps it quiet. A **separate SIM** for the bot is the safer long-term setup.
+- It needs a machine that stays on and online. No browser is required for the photo merging.
 
-**The official route** is the WhatsApp Business Cloud API (Meta). No ban risk, proper webhooks, template messages. Costs per conversation, needs a Meta Business verification and a number that is **not** on the regular WhatsApp app. The code here is split so only `bot.js` (about 100 lines) would change: `lib/` is transport-independent. If you go official, `bot.js` becomes an Express webhook that downloads media from Meta's URL and posts replies to the Graph API.
+**The official route** is the WhatsApp Business Cloud API (Meta): no ban risk, webhooks, template messages, per-conversation pricing, and a number that is not on the regular WhatsApp app. Only `bot.js` would change; `lib/` is transport-independent.
 
 ## What the parser understands
 

@@ -3,7 +3,6 @@ cd "$(dirname "$0")"
 echo "=== OIC WhatsApp bot: one-time setup ==="
 command -v node >/dev/null || { echo "Node.js is not installed. Install it from https://nodejs.org (LTS) and run this again."; exit 1; }
 npm install
-npx puppeteer browsers install chrome
 npx playwright install chromium
 [ -f .env ] || cp .env.example .env
 echo; echo "Running self-test (should end with ALL OK)..."
