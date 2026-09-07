@@ -67,3 +67,7 @@ iOS will not run a downloaded `.html` file from the Files app — JavaScript is 
 ## Note on hosting
 
 A public GitHub Pages repo means this file is readable by anyone with the link. No customer data is stored or transmitted — everything stays on the device. But it does contain OIC rate tables, the 01/06/2026 discount structure and CR-8811 commission rates. Check with your DO or RO before publishing publicly; the same six files work on any internal web host.
+
+## WhatsApp automation
+
+`whatsapp-bot/` turns this calculator into a WhatsApp auto-responder: incoming photos are archived and merged into one PDF, and one-line requests such as `quote bike 125cc 2021 idv 60000` are priced by this very `index.html` running headlessly and answered with a breakdown plus the quote PDF. See `whatsapp-bot/README.md`.
