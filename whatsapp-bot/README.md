@@ -60,7 +60,8 @@ Settings (`.env`):
 | `AGENT_NAME` | Signature under every quote | empty |
 | `MERGE_WAIT_SECONDS` | Quiet period before photos are merged | 45 |
 | `REPLY_IN_GROUPS` | `1` to also respond inside groups | 0 |
-| `ALLOW_NUMBERS` | Comma-separated numbers to respond to; empty = everyone | empty |
+| `ALLOW_GROUPS` | Group names to respond in (exact, comma-separated); empty = all groups. The bot prints your group names at startup | empty |
+| `ALLOW_NUMBERS` | Comma-separated numbers to respond to; empty = everyone. In groups, checked against the message author | empty |
 | `AUTO_QUOTE` / `AUTO_PDF` | `0` to switch either feature off | 1 |
 | `INBOX_DIR` | Where files are stored | `./inbox` |
 

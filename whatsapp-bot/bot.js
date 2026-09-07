@@ -27,7 +27,10 @@ const CFG = {
   agentName: process.env.AGENT_NAME || '',
   mergeWaitSeconds: parseInt(process.env.MERGE_WAIT_SECONDS || '45', 10),
   replyInGroups: process.env.REPLY_IN_GROUPS === '1',
+  // comma-separated group names (exact, case-insensitive). Empty + REPLY_IN_GROUPS=1 = every group.
+  allowGroups: (process.env.ALLOW_GROUPS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean),
   // comma-separated numbers (country code, digits only). Empty = reply to everyone.
+  // In groups this is checked against the person who wrote the message.
   allowList: (process.env.ALLOW_NUMBERS || '').split(',').map(s => s.trim()).filter(Boolean),
   autoReplyQuotes: process.env.AUTO_QUOTE !== '0',
   autoMergePdf: process.env.AUTO_PDF !== '0',
@@ -41,9 +44,11 @@ const client = new Client({
 async function contactLabel(msg) {
   try {
     const c = await msg.getContact();
-    const num = (c.number || msg.from.split('@')[0]);
-    return (c.name || c.pushname) ? `${c.name || c.pushname} (${num})` : num;
-  } catch { return msg.from.split('@')[0]; }
+    const num = (c.number || (msg.author || msg.from).split('@')[0]);
+    let who = (c.name || c.pushname) ? `${c.name || c.pushname} (${num})` : num;
+    if (msg.from.endsWith('@g.us')) { try { who = ((await msg.getChat()).name || 'group') + ' - ' + who; } catch {} }
+    return who;
+  } catch { return (msg.author || msg.from).split('@')[0]; }
 }
 
 const batcher = new PhotoBatcher({
@@ -67,12 +72,30 @@ const batcher = new PhotoBatcher({
   },
 });
 
-function allowed(msg) {
+async function allowed(msg) {
   if (msg.fromMe) return false;
-  if (msg.from.endsWith('@g.us') && !CFG.replyInGroups) return false;
   if (msg.from === 'status@broadcast') return false;
-  if (CFG.allowList.length && !CFG.allowList.includes(msg.from.split('@')[0])) return false;
+  const isGroup = msg.from.endsWith('@g.us');
+  if (isGroup) {
+    if (!CFG.replyInGroups) return false;
+    if (CFG.allowGroups.length) {
+      let name = '';
+      try { name = ((await msg.getChat()).name || '').toLowerCase(); } catch {}
+      if (!CFG.allowGroups.includes(name)) return false;
+    }
+  }
+  const sender = (isGroup ? (msg.author || '') : msg.from).split('@')[0];
+  if (CFG.allowList.length && !CFG.allowList.includes(sender)) return false;
   return true;
+}
+
+async function printGroups() {
+  try {
+    const groups = (await client.getChats()).filter(c => c.isGroup).map(c => c.name);
+    if (!groups.length) return console.log('[groups] this number is not in any group');
+    console.log('[groups] your groups (copy the exact name into ALLOW_GROUPS in .env):');
+    groups.forEach(g => console.log('   ' + g));
+  } catch (e) { console.error('[groups] could not list groups', e.message); }
 }
 
 async function handleQuote(msg, text, label) {
@@ -103,12 +126,15 @@ client.on('qr', qr => {
   qrcode.generate(qr, { small: true });
 });
 client.on('authenticated', () => { try { fs.unlinkSync(path.resolve(__dirname, 'qr.png')); } catch {} });
-client.on('ready', () => console.log(`Ready. Inbox: ${org.ROOT}  merge wait: ${CFG.mergeWaitSeconds}s  groups: ${CFG.replyInGroups}`));
+client.on('ready', () => {
+  console.log(`Ready. Inbox: ${org.ROOT}  merge wait: ${CFG.mergeWaitSeconds}s  groups: ${CFG.replyInGroups ? (CFG.allowGroups.join(', ') || 'all') : 'off'}`);
+  printGroups();
+});
 client.on('auth_failure', m => console.error('Auth failure', m));
 client.on('disconnected', r => { console.error('Disconnected:', r); process.exit(1); });
 
 client.on('message', async msg => {
-  if (!allowed(msg)) return;
+  if (!(await allowed(msg))) return;
   const label = await contactLabel(msg);
   const text = (msg.body || '').trim();
 
