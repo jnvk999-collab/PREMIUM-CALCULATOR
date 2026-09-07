@@ -62,7 +62,9 @@ Settings (`.env`):
 | `REPLY_IN_GROUPS` | `1` to also respond inside groups | 0 |
 | `ALLOW_GROUPS` | Group names to respond in (exact, comma-separated); empty = all groups. The bot prints your group names at startup | empty |
 | `ALLOW_NUMBERS` | Comma-separated numbers to respond to; empty = everyone. In groups, checked against the message author | empty |
-| `AUTO_QUOTE` / `AUTO_PDF` | `0` to switch either feature off | 1 |
+| `AUTO_PDF` | `0` to switch photo merging off | 1 |
+| `PDF_TO` | Where the merged PDF goes: `me` (your own chat), `sender`, or `both` | me |
+| `AUTO_QUOTE` | `1` to answer one-line quote requests automatically | 0 (off) |
 | `INBOX_DIR` | Where files are stored | `./inbox` |
 
 ## Which WhatsApp connection to use

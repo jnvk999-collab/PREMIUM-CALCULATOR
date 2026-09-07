@@ -32,7 +32,10 @@ const CFG = {
   // comma-separated numbers (country code, digits only). Empty = reply to everyone.
   // In groups this is checked against the person who wrote the message.
   allowList: (process.env.ALLOW_NUMBERS || '').split(',').map(s => s.trim()).filter(Boolean),
-  autoReplyQuotes: process.env.AUTO_QUOTE !== '0',
+  // Quotes are OFF unless AUTO_QUOTE=1.
+  autoReplyQuotes: process.env.AUTO_QUOTE === '1',
+  // Where the merged photo PDF goes: 'me' (your own chat, default), 'sender', or 'both'.
+  pdfTo: (process.env.PDF_TO || 'me').toLowerCase(),
   // When a quote request is missing details: '1' = ask the customer for them,
   // '0' (default) = stay silent to the customer and notify you instead.
   askCustomerForMissing: process.env.ASK_FOR_MISSING === '1',
@@ -74,13 +77,14 @@ const batcher = new PhotoBatcher({
       const name = `photos_${org.safeName(label).replace(/\s+/g, '_')}_${Date.now()}.pdf`;
       const out = org.saveOutput(label, name, Buffer.from(bytes), { pages, source: paths.length });
       const media = MessageMedia.fromFilePath(out);
-      let caption = `Merged ${pages} photo${pages === 1 ? '' : 's'} into one PDF.`;
+      let caption = `${label}: ${pages} photo${pages === 1 ? '' : 's'} merged into one PDF.`;
       if (skipped.length) caption += ` Skipped ${skipped.length} file(s) that were not JPEG/PNG.`;
-      await client.sendMessage(chatId, media, { caption, sendMediaAsDocument: true });
+      if (CFG.pdfTo === 'me' || CFG.pdfTo === 'both') await sendToOwner(media, caption);
+      if (CFG.pdfTo === 'sender' || CFG.pdfTo === 'both') await client.sendMessage(chatId, media, { caption: `Merged ${pages} photo${pages === 1 ? '' : 's'} into one PDF.`, sendMediaAsDocument: true });
       console.log(`[pdf] ${label}: ${pages} pages -> ${out}`);
     } catch (e) {
       console.error('[pdf] merge failed', e);
-      await client.sendMessage(chatId, 'Sorry, could not merge those photos. They are saved and I will do it manually.');
+      await notifyOwner(`Could not merge photos from ${label}. They are saved in the inbox folder.`);
     }
   },
 });
@@ -102,12 +106,16 @@ async function allowed(msg) {
   return true;
 }
 
-// Sends a note to your own number (the "message yourself" chat in WhatsApp).
+// Your own number (the "message yourself" chat in WhatsApp).
+function ownerId() { return client.info && client.info.wid && client.info.wid._serialized; }
 async function notifyOwner(text) {
-  try {
-    const me = client.info && client.info.wid && client.info.wid._serialized;
-    if (me) await client.sendMessage(me, '🤖 ' + text);
-  } catch (e) { console.error('[notify] ' + e.message); }
+  try { const me = ownerId(); if (me) await client.sendMessage(me, '🤖 ' + text); }
+  catch (e) { console.error('[notify] ' + e.message); }
+}
+async function sendToOwner(media, caption) {
+  const me = ownerId();
+  if (!me) throw new Error('own number not known yet');
+  await client.sendMessage(me, media, { caption, sendMediaAsDocument: true });
 }
 
 async function printGroups() {
@@ -182,7 +190,8 @@ client.on('message', async msg => {
       const file = org.saveMedia(label, media, { caption: text, from: msg.from });
       if (CFG.autoMergePdf && /^image\//.test(media.mimetype)) {
         const n = batcher.add(msg.from, { path: file, label });
-        if (n === 1) await msg.reply(`Got it. I will merge the photos into one PDF in ${CFG.mergeWaitSeconds}s (send *pdf* to do it now).`);
+        if (n === 1 && CFG.pdfTo !== 'me') await msg.reply(`Got it. I will merge the photos into one PDF in ${CFG.mergeWaitSeconds}s (send *pdf* to do it now).`);
+        if (n === 1) console.log(`[photos] ${label}: collecting, PDF in ${CFG.mergeWaitSeconds}s`);
       }
       // a photo captioned with a quote request still gets a quote
       if (CFG.autoReplyQuotes && isQuoteRequest(text)) await handleQuote(msg, text, label);
@@ -190,10 +199,11 @@ client.on('message', async msg => {
     }
 
     if (/^(pdf|merge|done)$/i.test(text)) {
-      if (!batcher.pending(msg.from)) return msg.reply('No photos waiting. Send the photos first, then *pdf*.');
-      return batcher.flush(msg.from);
+      if (batcher.pending(msg.from)) return batcher.flush(msg.from);
+      if (CFG.pdfTo !== 'me') return msg.reply('No photos waiting. Send the photos first, then *pdf*.');
+      return;
     }
-    if (/^(help|hi|hello|menu|start)$/i.test(text)) return msg.reply(HELP);
+    if (/^(help|menu)$/i.test(text) && CFG.autoReplyQuotes) return msg.reply(HELP);
     if (CFG.autoReplyQuotes && isQuoteRequest(text)) return handleQuote(msg, text, label);
 
     org.log({ type: 'text', contact: label, text });
