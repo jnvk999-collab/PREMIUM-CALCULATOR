@@ -28,6 +28,7 @@ function drawCover(pdf, font, bold, info, items, skipped) {
   y -= 6;
   page.drawLine({ start: { x: 50, y: y + 6 }, end: { x: A4.w - 50, y: y + 6 }, thickness: 1, color: rgb(0.7, 0.75, 0.85) });
   y -= 10;
+  if (info.vehicle)  line(`Vehicle:   ${info.vehicle}`, 14, bold);
   if (info.from)     line(`From:      ${info.from}`);
   if (info.number)   line(`Number:    ${info.number}`);
   if (info.group)    line(`Group:     ${info.group}`);

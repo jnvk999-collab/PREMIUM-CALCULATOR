@@ -22,6 +22,7 @@ const {
 const { mergeFilesToPdf, PhotoBatcher } = require('./lib/pdfMerge');
 const org = require('./lib/organise');
 const mailer = require('./lib/mailer');
+const vehicle = require('./lib/vehicle');
 
 const CFG = {
   agentName: process.env.AGENT_NAME || '',
@@ -32,7 +33,10 @@ const CFG = {
   autoReplyQuotes: process.env.AUTO_QUOTE === '1',
   autoMergePdf: process.env.AUTO_PDF !== '0',
   pdfTo: (process.env.PDF_TO || 'me').toLowerCase(),
+  // Read the vehicle number from the photos (local OCR, free) and use it in the file name.
+  ocrVehicle: process.env.OCR_VEHICLE !== '0',
 };
+const prettyReg = r => r ? r.replace(/^([A-Z]{2}\d{2})([A-Z]{1,3})(\d{4})$/, '$1 $2 $3').replace(/^(\d{2}BH)(\d{4})([A-Z]{1,2})$/, '$1 $2 $3') : '';
 
 const AUTH_DIR = path.resolve(__dirname, 'baileys_auth');
 const QR_PNG = path.resolve(__dirname, 'qr.png');
@@ -105,30 +109,39 @@ const batcher = new PhotoBatcher({
       const stamp = new Date();
       const date = stamp.toLocaleDateString('en-CA');                       // YYYY-MM-DD
       const hhmm = stamp.toTimeString().slice(0, 5).replace(':', '');
+      let reg = null;
+      if (CFG.ocrVehicle) {
+        try { reg = (await vehicle.findVehicleNumber(files.map(f => f.path))).number; }
+        catch (e) { console.error('[ocr] ' + e.message); }
+      }
       const who = org.safeName(first.name || number(first.sender)).replace(/\s+/g, '_');
+      const baseName = reg ? `${reg}_${date}` : `${who}_${date}_${hhmm}`;
       const { bytes, pages, items, skipped } = await mergeFilesToPdf(
         files.map(f => ({ path: f.path, caption: f.caption })),
         {
-          label: first.name || number(first.sender),
-          title: `${first.name || number(first.sender)} - ${date}`,
+          label: reg ? prettyReg(reg) : (first.name || number(first.sender)),
+          title: `${reg ? prettyReg(reg) + ' - ' : ''}${first.name || number(first.sender)} - ${date}`,
           cover: {
-            title: 'Documents received on WhatsApp',
+            title: 'Documents received on WhatsApp', vehicle: prettyReg(reg),
             from: first.name || '', number: number(first.sender), group: first.group || '',
             received: first.receivedAt.toLocaleString('en-IN'), agent: CFG.agentName,
           },
         });
-      const out = org.saveOutput(label, `${who}_${date}_${hhmm}.pdf`, Buffer.from(bytes), { pages, source: files.length });
+      let fname = `${baseName}.pdf`;
+      if (reg && org.archiveExists(fname, stamp)) fname = `${baseName}_${hhmm}.pdf`;   // same vehicle twice a day
+      const out = org.saveOutput(label, fname, Buffer.from(bytes), { pages, source: files.length, vehicle: reg });
+      const archived = org.archiveMerged(fname, Buffer.from(bytes), stamp);
       const photos = items.filter(i => i.kind === 'Photo').length, pdfs = items.length - photos;
-      let caption = `${label}: ${photos} photo${photos === 1 ? '' : 's'}${pdfs ? ` + ${pdfs} PDF${pdfs === 1 ? '' : 's'}` : ''} merged (${pages} page${pages === 1 ? '' : 's'}).`;
+      let caption = `${reg ? prettyReg(reg) + ' - ' : ''}${label}: ${photos} photo${photos === 1 ? '' : 's'}${pdfs ? ` + ${pdfs} PDF${pdfs === 1 ? '' : 's'}` : ''} merged (${pages} page${pages === 1 ? '' : 's'}).`;
       if (skipped.length) caption += ` Skipped ${skipped.length} unsupported file(s).`;
       if (CFG.pdfTo === 'me' || CFG.pdfTo === 'both') await sendPdf(myJid, out, caption);
       if (CFG.pdfTo === 'sender' || CFG.pdfTo === 'both') await sendPdf(chatId, out, `Merged into one PDF (${pages} page${pages === 1 ? '' : 's'}).`);
-      console.log(`[pdf] ${label}: ${pages} pages -> ${out}`);
+      console.log(`[pdf] ${label}: ${pages} pages${reg ? ', vehicle ' + prettyReg(reg) : ', no vehicle number found'} -> ${archived}`);
       if (mailer.enabled()) {
         try {
           await mailer.sendPdf({
             file: out, filename: path.basename(out),
-            subject: `${first.name || number(first.sender)} - ${date} - ${pages} page${pages === 1 ? '' : 's'}${first.group ? ` (${first.group})` : ''}`,
+            subject: `${reg ? prettyReg(reg) + ' - ' : ''}${first.name || number(first.sender)} - ${date} - ${pages} page${pages === 1 ? '' : 's'}${first.group ? ` (${first.group})` : ''}`,
             text: caption + '\n\n' + items.map((it, i) => `${i + 1}. ${it.kind} ${it.name}${it.caption ? ' - ' + it.caption : ''}`).join('\n'),
           });
           console.log(`[mail] sent ${path.basename(out)}`);
@@ -230,7 +243,7 @@ async function start() {
       try { fs.unlinkSync(QR_PNG); } catch {}
       myJid = jidNormalizedUser(sock.user.id);
       if (mailer.enabled()) mailer.verify().then(() => console.log('[mail] email login OK, PDFs will also be emailed to ' + process.env.EMAIL_TO)).catch(e => console.error('[mail] email login FAILED: ' + e.message));
-      console.log(`Ready as ${number(myJid)}. Inbox: ${org.ROOT}  merge wait: ${CFG.mergeWaitSeconds}s  PDF to: ${CFG.pdfTo}  groups: ${CFG.replyInGroups ? (CFG.allowGroups.join(', ') || 'all') : 'off'}`);
+      console.log(`Ready as ${number(myJid)}. Inbox: ${org.ROOT}  Merged PDFs: ${org.MERGED_ROOT}  merge wait: ${CFG.mergeWaitSeconds}s  PDF to: ${CFG.pdfTo}  groups: ${CFG.replyInGroups ? (CFG.allowGroups.join(', ') || 'all') : 'off'}`);
       if (CFG.replyInGroups) {
         try {
           const groups = Object.values(await sock.groupFetchAllParticipating());
@@ -257,5 +270,8 @@ async function start() {
   });
 }
 
-process.on('SIGINT', async () => { try { await require('./lib/calculator').close(); } catch {} process.exit(0); });
+// A bad photo or a library hiccup must never take the bot down.
+process.on('uncaughtException', e => console.error('[fatal-caught] ' + (e && e.stack || e)));
+process.on('unhandledRejection', e => console.error('[rejection] ' + (e && e.stack || e)));
+process.on('SIGINT', async () => { try { await require('./lib/calculator').close(); } catch {} try { await vehicle.close(); } catch {} process.exit(0); });
 start().catch(e => { console.error('Fatal: ' + e.message); process.exit(1); });

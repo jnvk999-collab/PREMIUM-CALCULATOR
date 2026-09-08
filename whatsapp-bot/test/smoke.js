@@ -62,6 +62,25 @@ const { quoteText } = require('../lib/reply');
   fs.writeFileSync(path.join(tmp, 'merged.pdf'), m.bytes);
   console.log('✓ merged 3 photos + 2-page PDF behind a cover page, skipped 1 bad file  -> ' + path.join(tmp, 'merged.pdf'));
 
+  // 6. vehicle number OCR on a rendered RC-like image, and the year/month/day archive
+  const { chromium } = require('playwright');
+  const b = await chromium.launch(); const pg = await b.newPage({ viewport: { width: 900, height: 400 } });
+  await pg.setContent('<body style="margin:0;background:#dfe7f1;font-family:Arial"><div style="padding:30px"><h2>CERTIFICATE OF REGISTRATION</h2><p style="font-size:22px">Regn. No. : <b>TS09 EA 5678</b></p><p style="font-size:20px">Maker : HONDA &nbsp; Model : ACTIVA 6G</p></div></body>');
+  const rc = path.join(tmp, 'rc.jpg'); await pg.screenshot({ path: rc, type: 'jpeg' }); await b.close();
+  const veh = require('../lib/vehicle');
+  const found = await veh.findVehicleNumber([rc, files[0].path]);   // the 2x2 stub is skipped, not crashed on
+  await veh.close();
+  assert.strictEqual(found.number, 'TS09EA5678', JSON.stringify(found));
+  console.log('✓ OCR found vehicle number ' + found.number);
+  process.env.MERGED_DIR = path.join(tmp, 'merged');
+  delete require.cache[require.resolve('../lib/organise')];
+  const org = require('../lib/organise');
+  const when = new Date(2026, 8, 8, 14, 30);
+  const archived = org.archiveMerged('TS09EA5678_2026-09-08.pdf', m.bytes, when);
+  assert(archived.endsWith(path.join('2026', '2026-09 September', '2026-09-08', 'TS09EA5678_2026-09-08.pdf')), archived);
+  assert(org.archiveExists('TS09EA5678_2026-09-08.pdf', when));
+  console.log('✓ archived at ' + path.relative(tmp, archived));
+
   await calc.close();
   console.log('ALL OK');
 })().catch(async e => { console.error(e); await calc.close(); process.exit(1); });

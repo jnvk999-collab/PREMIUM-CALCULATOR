@@ -47,4 +47,21 @@ function log(entry) {
   fs.appendFileSync(path.join(ROOT, 'log.jsonl'), JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n');
 }
 
-module.exports = { ROOT, saveMedia, saveOutput, log, safeName, contactDir };
+
+// Merged PDFs also go to MERGED_DIR/<YYYY>/<YYYY-MM Month>/<YYYY-MM-DD>/<file>
+const MERGED_ROOT = process.env.MERGED_DIR || path.resolve(__dirname, '..', 'merged');
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function archiveDir(when) {
+  const y = when.getFullYear(), m = String(when.getMonth() + 1).padStart(2, '0');
+  return path.join(MERGED_ROOT, String(y), `${y}-${m} ${MONTHS[when.getMonth()]}`, todayISO(when));
+}
+function archiveExists(filename, when = new Date()) { return fs.existsSync(path.join(archiveDir(when), filename)); }
+function archiveMerged(filename, bytes, when = new Date()) {
+  const dir = archiveDir(when);
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, filename);
+  fs.writeFileSync(file, bytes);
+  return file;
+}
+
+module.exports = { ROOT, MERGED_ROOT, saveMedia, saveOutput, archiveMerged, archiveExists, log, safeName, contactDir };

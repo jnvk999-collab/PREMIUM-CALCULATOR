@@ -4,7 +4,7 @@ Turns the calculator in the parent folder into a WhatsApp auto-responder.
 
 | Someone sends… | The bot does… |
 |---|---|
-| Photos or PDFs (RC, Aadhaar, old policy, vehicle pics) | Saves them under `inbox/<contact>/<date>/`, waits for the burst to finish (45 s, or the word **pdf**), merges them into one A4 PDF named `<Name>_<date>_<time>.pdf` with a cover page (sender, number, group, time, list of contents) and sends it to your own chat |
+| Photos or PDFs (RC, Aadhaar, old policy, vehicle pics) | Saves them under `inbox/<contact>/<date>/`, waits for the burst to finish (45 s, or the word **pdf**), merges them into one A4 PDF named `<VEHICLE NUMBER>_<date>.pdf` (read from the photos by local OCR; falls back to `<Name>_<date>_<time>.pdf`) with a cover page (sender, number, group, time, list of contents) and sends it to your own chat |
 | `quote bike 125cc 2021 idv 60000` | Parses the line, prices it with the **real calculator** (`../index.html` running in headless Chromium), replies with a premium breakdown **and** the calculator's own quote PDF |
 | `quote car 1200cc reg 2019 idv 4.5 lakh zone A ncb 25 zero dep diesel for Ramesh Kumar` | Same, with name, NCB, zone, fuel and add-on picked up |
 | `tp only activa 2018` | Third-party-only quote (no IDV needed) |
@@ -72,7 +72,9 @@ Settings (`.env`):
 | `AUTO_PDF` | `0` to switch photo merging off | 1 |
 | `PDF_TO` | Where the merged PDF goes: `me` (your own chat), `sender`, or `both` | me |
 | `AUTO_QUOTE` | `1` to answer one-line quote requests automatically | 0 (off) |
-| `INBOX_DIR` | Where files are stored | `./inbox` |
+| `INBOX_DIR` | Where incoming files are stored | `./inbox` |
+| `MERGED_DIR` | Where merged PDFs are filed as `<year>/<year-month Month>/<date>/` | `./merged` |
+| `OCR_VEHICLE` | Read the vehicle number from the photos (local OCR, free) and name the PDF `<VEHICLE>_<date>.pdf` | 1 |
 | `EMAIL_TO` / `EMAIL_FROM` / `EMAIL_APP_PASSWORD` | Also email every merged PDF (Gmail App Password; see `.env.example`) | off |
 
 ## Which WhatsApp connection to use
