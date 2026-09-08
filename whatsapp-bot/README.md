@@ -90,6 +90,7 @@ Settings (`.env`):
 | `ALLOW_GROUPS` | Group names to respond in (exact, comma-separated); empty = all groups. The bot prints your group names at startup | empty |
 | `ALLOW_NUMBERS` | Comma-separated numbers to respond to; empty = everyone. In groups, checked against the message author | empty |
 | `AUTO_PDF` | `0` to switch photo merging off | 1 |
+| `MIN_PHOTOS` | Make a PDF only when a set has at least this many photos; smaller sets are filed but produce nothing | 3 |
 | `PDF_TO` | Where the merged PDF goes: `me` (your own chat), `sender`, or `both` | me |
 | `AUTO_QUOTE` | `1` to answer one-line quote requests automatically | 0 (off) |
 | `INBOX_DIR` | Where incoming files are stored | `./inbox` |

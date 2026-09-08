@@ -48,6 +48,9 @@ const CFG = {
   pdfTo: (process.env.PDF_TO || 'me').toLowerCase(),
   // Read the vehicle number from the photos (local OCR, free) and use it in the file name.
   ocrVehicle: process.env.OCR_VEHICLE !== '0',
+  // Only make a PDF when a set has at least this many photos (vehicle inspection sets).
+  // Single greeting images / forwards are filed in the inbox but produce nothing.
+  minPhotos: parseInt(process.env.MIN_PHOTOS || '3', 10),
 };
 const prettyReg = r => r ? r.replace(/^([A-Z]{2}\d{2})([A-Z]{1,3})(\d{4})$/, '$1 $2 $3').replace(/^(\d{2}BH)(\d{4})([A-Z]{1,2})$/, '$1 $2 $3') : '';
 
@@ -138,6 +141,12 @@ const batcher = new PhotoBatcher({
   onFlush: async (chatId, files) => {
     const first = files[0];
     const label = first.label;
+    const photoCount = files.filter(f => /\.(jpe?g|png)$/i.test(f.path)).length;
+    if (photoCount < CFG.minPhotos) {
+      console.log(`[skip] ${label}: only ${photoCount} photo${photoCount === 1 ? '' : 's'} (need ${CFG.minPhotos}), no PDF made`);
+      org.log({ type: 'skipped-small-set', contact: label, photos: photoCount, files: files.map(f => path.basename(f.path)) });
+      return;
+    }
     try {
       const stamp = first.sentAt ? new Date(first.sentAt) : new Date();   // file under the day the photos were sent
       const date = stamp.toLocaleDateString('en-CA');                       // YYYY-MM-DD
@@ -332,7 +341,7 @@ async function start() {
       myJid = jidNormalizedUser(sock.user.id);
       if (CFG.ocrVehicle) vehicle.warmUp();
       if (mailer.enabled()) mailer.verify().then(() => console.log('[mail] email login OK, PDFs will also be emailed to ' + process.env.EMAIL_TO)).catch(e => console.error('[mail] email login FAILED: ' + e.message));
-      console.log(`Ready as ${number(myJid)}. Inbox: ${org.ROOT}  Merged PDFs: ${org.MERGED_ROOT}  merge wait: ${CFG.mergeWaitSeconds}s  PDF to: ${CFG.pdfTo}  groups: ${CFG.replyInGroups ? (CFG.allowGroups.join(', ') || 'all') : 'off'}`);
+      console.log(`Ready as ${number(myJid)}. Inbox: ${org.ROOT}  Merged PDFs: ${org.MERGED_ROOT}  min photos: ${CFG.minPhotos}  merge wait: ${CFG.mergeWaitSeconds}s  PDF to: ${CFG.pdfTo}  groups: ${CFG.replyInGroups ? (CFG.allowGroups.join(', ') || 'all') : 'off'}`);
       if (CFG.replyInGroups) {
         try {
           const groups = Object.values(await sock.groupFetchAllParticipating());
