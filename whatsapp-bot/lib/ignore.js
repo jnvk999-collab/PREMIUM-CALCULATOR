@@ -37,4 +37,30 @@ function isIgnored({ group, sender }) {
   return null;
 }
 
-module.exports = { isIgnored, load };
+
+// Optional allowed-groups.txt: when it exists and has entries, ONLY these groups are handled
+// (direct chats from individuals are always handled). Hot-reloaded.
+function findAllowFile() {
+  try {
+    const names = fs.readdirSync(DIR).filter(f => /^allowed-groups(\.txt)*$/i.test(f) && !/example/i.test(f));
+    if (names.length) return path.join(DIR, names.sort((a, b) => a.length - b.length)[0]);
+  } catch {}
+  return null;
+}
+function allowedGroups() {
+  const file = findAllowFile();
+  if (!file) return null;
+  const set = new Set();
+  for (const raw of fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    set.add(norm(line));
+  }
+  return set.size ? set : null;
+}
+function groupAllowed(group) {
+  const set = allowedGroups();
+  return !set || set.has(norm(group));
+}
+
+module.exports = { isIgnored, load, groupAllowed, allowedGroups };

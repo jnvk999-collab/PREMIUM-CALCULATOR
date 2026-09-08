@@ -106,7 +106,9 @@ async function allowed(m) {
   const isGroup = jid.endsWith('@g.us');
   if (isGroup) {
     if (!CFG.replyInGroups) return false;
-    if (CFG.allowGroups.length && !CFG.allowGroups.includes((await groupName(jid)).toLowerCase())) return false;
+    const gname = await groupName(jid);
+    if (CFG.allowGroups.length && !CFG.allowGroups.includes(gname.toLowerCase())) return false;
+    if (!ignore.groupAllowed(gname)) { if (mediaOf(m)) console.log(`[ignore] group "${gname}" not in allowed-groups.txt`); return false; }
   }
   const sender = m.key.fromMe ? number(myJid) : number(isGroup ? m.key.participant : jid);
   if (CFG.allowList.length && !m.key.fromMe && !CFG.allowList.includes(sender)) return false;
@@ -349,8 +351,13 @@ async function start() {
         try {
           const groups = Object.values(await sock.groupFetchAllParticipating());
           groups.forEach(g => groupNames.set(g.id, g.subject));
-          console.log('[groups] your groups (copy an exact name into ALLOW_GROUPS in .env to limit):');
-          groups.forEach(g => console.log('   ' + g.subject));
+          const list = groups.map(g => g.subject).sort((a, b) => a.localeCompare(b));
+          fs.writeFileSync(path.join(__dirname, 'groups.txt'),
+            '# All groups this number is in (written at every start).\n' +
+            '# To handle ONLY some groups: create allowed-groups.txt and put one group name per line.\n' +
+            '# To skip some groups: put their names in ignore-list.txt.\n\n' + list.join('\n') + '\n');
+          const allow = ignore.allowedGroups();
+          console.log(`[groups] ${list.length} groups written to groups.txt` + (allow ? `; handling only the ${allow.size} in allowed-groups.txt` : '; handling all (create allowed-groups.txt to limit)'));
         } catch (e) { console.log('[groups] could not list groups: ' + e.message); }
       }
     }

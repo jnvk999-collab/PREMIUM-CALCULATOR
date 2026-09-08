@@ -97,6 +97,8 @@ Settings (`.env`):
 | `MERGED_DIR` | Where merged PDFs are filed as `<year>/<year-month Month>/<date>/` | `./merged` |
 | `OCR_VEHICLE` | Read the vehicle number from the photos (local OCR, free) and name the PDF `<VEHICLE>_<date>.pdf` | 1 |
 | `EMAIL_TO` / `EMAIL_FROM` / `EMAIL_APP_PASSWORD` | Also email every merged PDF (Gmail App Password; see `.env.example`) | off |
+| `groups.txt` | Written at every start: all groups this number is in | auto |
+| `allowed-groups.txt` | If present, only these groups are handled (one name per line); individuals are always handled. Edits apply without restart | none |
 | `ignore-list.txt` | Group names and numbers to ignore completely; see `ignore-list.example.txt`. Edits apply without restart | none |
 | `email-routes.txt` | Extra (or only) email addresses per group or sender; see `email-routes.example.txt`. Edits apply without restart | none |
 
