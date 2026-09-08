@@ -71,24 +71,29 @@ async function groupName(jid) {
 async function contactLabel(m) {
   const jid = m.key.remoteJid;
   const isGroup = jid.endsWith('@g.us');
-  const who = isGroup ? m.key.participant : jid;
+  const who = m.key.fromMe ? myJid : (isGroup ? m.key.participant : jid);
   const num = number(who);
-  let label = m.pushName ? `${m.pushName} (${num})` : num;
+  let label = m.key.fromMe ? `${CFG.agentName || 'Me'} (${num})` : (m.pushName ? `${m.pushName} (${num})` : num);
   if (isGroup) label = ((await groupName(jid)) || 'group') + ' - ' + label;
   return label;
 }
 
 async function allowed(m) {
-  if (m.key.fromMe) return false;
   const jid = m.key.remoteJid || '';
+  if (m.key.fromMe) {
+    // Your own messages (typed on the phone) count too, but only photos/PDFs,
+    // and never the files the bot itself sent.
+    if (sentByBot.has(m.key.id)) return false;
+    if (!mediaOf(m)) return false;
+  }
   if (jid === 'status@broadcast' || jid.endsWith('@newsletter')) return false;
   const isGroup = jid.endsWith('@g.us');
   if (isGroup) {
     if (!CFG.replyInGroups) return false;
     if (CFG.allowGroups.length && !CFG.allowGroups.includes((await groupName(jid)).toLowerCase())) return false;
   }
-  const sender = number(isGroup ? m.key.participant : jid);
-  if (CFG.allowList.length && !CFG.allowList.includes(sender)) return false;
+  const sender = m.key.fromMe ? number(myJid) : number(isGroup ? m.key.participant : jid);
+  if (CFG.allowList.length && !m.key.fromMe && !CFG.allowList.includes(sender)) return false;
   return true;
 }
 
@@ -106,9 +111,12 @@ function mediaOf(m) {
   return null;
 }
 
-async function sendText(jid, text) { await sock.sendMessage(jid, { text }); }
+// ids of messages the bot itself sent, so it never reacts to its own PDFs/notes
+const sentByBot = new Set();
+function remember(sent) { const id = sent && sent.key && sent.key.id; if (id) { sentByBot.add(id); if (sentByBot.size > 2000) sentByBot.delete(sentByBot.values().next().value); } return sent; }
+async function sendText(jid, text) { return remember(await sock.sendMessage(jid, { text })); }
 async function sendPdf(jid, file, caption) {
-  await sock.sendMessage(jid, { document: fs.readFileSync(file), mimetype: 'application/pdf', fileName: path.basename(file), caption });
+  return remember(await sock.sendMessage(jid, { document: fs.readFileSync(file), mimetype: 'application/pdf', fileName: path.basename(file), caption }));
 }
 async function notifyOwner(text) { try { if (myJid) await sendText(myJid, '🤖 ' + text); } catch (e) { console.error('[notify] ' + e.message); } }
 
@@ -231,7 +239,7 @@ async function onMessage(m) {
           : Promise.resolve(null);
         const n = await batcher.add(jid, {
           path: file, label, caption: text, receivedAt: sentAt, sentAt, processedAt: new Date(), ocr,
-          name: m.pushName || '', sender: isGroup ? m.key.participant : jid,
+          name: m.key.fromMe ? (CFG.agentName || 'Me') : (m.pushName || ''), sender: m.key.fromMe ? myJid : (isGroup ? m.key.participant : jid),
           group: isGroup ? await groupName(jid) : '',
         });
         if (n === 1) console.log(`[files] ${label}: collecting, PDF in ${CFG.mergeWaitSeconds}s`);
