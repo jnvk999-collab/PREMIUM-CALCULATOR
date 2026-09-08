@@ -33,7 +33,17 @@ WhatsApp (your number, linked like WhatsApp Web)
 
 The important design choice: **the bot does not re-implement any rating logic.** It opens `index.html` once in headless Chromium and drives it the same way the calculator's own 700-case regression suite does. When you upload a new `index.html` with new rates, the bot prices with the new rates on its next quote. The smoke test proves this by checking one of the calculator's golden cases (₹1,915) through the bot's driver.
 
-## Running it for good
+## Running it in the cloud (laptop can be off)
+
+On a fresh Ubuntu server (DigitalOcean, Hetzner, AWS Lightsail, any VPS), run as root:
+
+```
+curl -fsSL https://raw.githubusercontent.com/jnvk999-collab/PREMIUM-CALCULATOR/claude/whatsapp-photo-pdf-automation-mgr9gu/whatsapp-bot/cloud-setup.sh | sudo bash
+```
+
+It installs Node.js and the bot, asks for your name and email settings, installs a systemd service that keeps the bot running and auto-updating, and prints a private link `http://<ip>:8080/<token>/` where you scan the QR and watch the log. Keep that link secret.
+
+## Running it for good (on a laptop)
 
 ```
 node start.js      # runs in the background, no window

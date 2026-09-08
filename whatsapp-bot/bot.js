@@ -234,6 +234,42 @@ async function onMessage(m) {
   }
 }
 
+// ── tiny private web page (for cloud servers with no screen) ───────────────
+// STATUS_PORT + STATUS_TOKEN in .env  ->  http://<server-ip>:<port>/<token>/
+// shows whether the bot is connected, the last log lines, and the QR when needed.
+function startStatusPage() {
+  const port = parseInt(process.env.STATUS_PORT || '0', 10);
+  const token = process.env.STATUS_TOKEN || '';
+  if (!port || !token) return;
+  const http = require('http');
+  http.createServer((req, res) => {
+    const url = req.url || '';
+    if (!url.startsWith('/' + token)) { res.writeHead(404); return res.end('not found'); }
+    const sub = url.slice(token.length + 1);
+    if (sub === '/qr.png') {
+      if (!fs.existsSync(QR_PNG)) { res.writeHead(404); return res.end('no QR right now'); }
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
+      return fs.createReadStream(QR_PNG).pipe(res);
+    }
+    let lines = [];
+    try {
+      const dir = path.join(__dirname, 'logs');
+      const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => f.endsWith('.log')).sort() : [];
+      if (files.length) lines = fs.readFileSync(path.join(dir, files[files.length - 1]), 'utf8').trim().split('\n').slice(-40);
+    } catch {}
+    const linked = !!myJid, qr = fs.existsSync(QR_PNG);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(`<!doctype html><meta http-equiv="refresh" content="10"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OIC WhatsApp bot</title><body style="font-family:system-ui;max-width:720px;margin:24px auto;padding:0 12px">
+<h2>OIC WhatsApp bot</h2>
+<p><b>Status:</b> ${linked ? '✅ connected as ' + number(myJid) : (qr ? '📱 waiting for QR scan' : '⏳ starting / reconnecting')}</p>
+${qr ? '<p>Open WhatsApp on your phone &gt; Linked devices &gt; Link a device, and scan:</p><img src="' + token + '/qr.png?' + Date.now() + '" style="width:320px;border:8px solid #fff">' : ''}
+<h3>Last log lines</h3><pre style="background:#111;color:#ddd;padding:12px;overflow:auto;font-size:12px">${lines.map(l => l.replace(/</g, '&lt;')).join('\n')}</pre>
+<p style="color:#888;font-size:12px">Refreshes every 10 s. Keep this link private: anyone with it can link your WhatsApp.</p></body>`);
+  }).listen(port, () => console.log(`[web] status page on port ${port} (path /${token.slice(0, 4)}…/)`));
+}
+startStatusPage();
+
 // ── connection ─────────────────────────────────────────────────────────────
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
