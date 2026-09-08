@@ -22,6 +22,7 @@ const {
 const { mergeFilesToPdf, PhotoBatcher } = require('./lib/pdfMerge');
 const org = require('./lib/organise');
 const mailer = require('./lib/mailer');
+const routes = require('./lib/routes');
 const vehicle = require('./lib/vehicle');
 
 const CFG = {
@@ -159,12 +160,13 @@ const batcher = new PhotoBatcher({
       console.log(`[pdf] ${label}: ${pages} pages${vehLabel ? ', vehicle ' + vehLabel : ', no vehicle number found'} -> ${archived}`);
       if (mailer.enabled()) {
         try {
+          const to = routes.recipientsFor({ group: first.group, sender: number(first.sender) }, mailer.defaultTo());
           await mailer.sendPdf({
-            file: out, filename: path.basename(out),
+            to, file: out, filename: path.basename(out),
             subject: `${vehLabel ? vehLabel + ' - ' : ''}${first.name || number(first.sender)} - ${date} - ${pages} page${pages === 1 ? '' : 's'}${first.group ? ` (${first.group})` : ''}`,
             text: caption + '\n\n' + items.map((it, i) => `${i + 1}. ${it.kind} ${it.name}${it.caption ? ' - ' + it.caption : ''}`).join('\n'),
           });
-          console.log(`[mail] sent ${path.basename(out)}`);
+          console.log(`[mail] sent ${path.basename(out)} to ${to.join(', ')}`);
         } catch (e) {
           console.error('[mail] failed: ' + e.message);
           await notifyOwner(`PDF was sent here but the email failed: ${e.message}`);

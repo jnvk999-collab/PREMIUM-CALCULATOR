@@ -33,15 +33,16 @@ function getTransport(c) {
 
 const enabled = () => !!config();
 
-async function sendPdf({ file, filename, subject, text }) {
+async function sendPdf({ file, filename, subject, text, to }) {
   const c = config();
   if (!c) throw new Error('email not configured (EMAIL_TO / EMAIL_FROM / EMAIL_APP_PASSWORD)');
+  const recipients = (to && to.length) ? to : c.to;
   await getTransport(c).sendMail({
-    from: `"WhatsApp Bot" <${c.from}>`, to: c.to.join(', '), subject, text,
+    from: `"WhatsApp Bot" <${c.from}>`, to: recipients.join(', '), subject, text,
     attachments: [{ filename, path: file, contentType: 'application/pdf' }],
   });
 }
 
 async function verify() { const c = config(); if (!c) return false; await getTransport(c).verify(); return true; }
 
-module.exports = { enabled, sendPdf, verify };
+module.exports = { enabled, sendPdf, verify, defaultTo: () => (config() || { to: [] }).to };

@@ -1,0 +1,14 @@
+# Extra email addresses per WhatsApp group or sender.
+# Copy this file to  email-routes.txt  and edit. Changes apply immediately (no restart).
+#
+# One line per rule:   <group name or phone number> = <email>, <email>
+# The PDF goes to these addresses IN ADDITION to EMAIL_TO from .env.
+# Add  (only)  at the end of a line to send ONLY to those addresses for that group.
+#
+# Group names must match exactly (capital letters do not matter).
+# A phone number is written with country code, digits only (919876543210).
+#
+# Examples:
+# SN - Vinod Oriental - Chittoor = vinod@gmail.com
+# BO Kadapa Agents = kadapa.bo@orientalinsurance.co.in, backup@gmail.com (only)
+# 919876543210 = ramesh.agent@gmail.com

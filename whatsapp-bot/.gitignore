@@ -9,3 +9,4 @@ logs/
 .version
 .pid
 .stop
+email-routes.txt
