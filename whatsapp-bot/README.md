@@ -4,7 +4,7 @@ Turns the calculator in the parent folder into a WhatsApp auto-responder.
 
 | Someone sends… | The bot does… |
 |---|---|
-| Photos (RC, Aadhaar, old policy, vehicle pics) | Saves them under `inbox/<contact>/<date>/`, waits for the burst to finish (45 s, or the word **pdf**), merges them into one A4 PDF and sends it back |
+| Photos or PDFs (RC, Aadhaar, old policy, vehicle pics) | Saves them under `inbox/<contact>/<date>/`, waits for the burst to finish (45 s, or the word **pdf**), merges them into one A4 PDF named `<Name>_<date>_<time>.pdf` with a cover page (sender, number, group, time, list of contents) and sends it to your own chat |
 | `quote bike 125cc 2021 idv 60000` | Parses the line, prices it with the **real calculator** (`../index.html` running in headless Chromium), replies with a premium breakdown **and** the calculator's own quote PDF |
 | `quote car 1200cc reg 2019 idv 4.5 lakh zone A ncb 25 zero dep diesel for Ramesh Kumar` | Same, with name, NCB, zone, fuel and add-on picked up |
 | `tp only activa 2018` | Third-party-only quote (no IDV needed) |
@@ -32,6 +32,14 @@ WhatsApp (your number, linked like WhatsApp Web)
 **Which calculator does it price with?** In this order: the `CALCULATOR_HTML` setting in `.env` (a file path or a URL such as `https://nvkoicl.github.io/PREMIUM-CALCULATOR/`), otherwise `../index.html` if the bot folder sits inside a calculator folder, otherwise the published site above. Verified against build v82 of the published calculator: the smoke test passes with it unchanged.
 
 The important design choice: **the bot does not re-implement any rating logic.** It opens `index.html` once in headless Chromium and drives it the same way the calculator's own 700-case regression suite does. When you upload a new `index.html` with new rates, the bot prices with the new rates on its next quote. The smoke test proves this by checking one of the calculator's golden cases (₹1,915) through the bot's driver.
+
+## Updating
+
+```
+node update.js
+```
+
+pulls the latest bot files from GitHub into this folder, leaves `.env`, `inbox/` and the login alone, and runs `npm install` when needed. Then restart the bot.
 
 ## Setup (on the PC or small server that will stay on)
 

@@ -19,7 +19,7 @@ const {
   DisconnectReason, downloadMediaMessage, jidNormalizedUser,
 } = require('@whiskeysockets/baileys');
 
-const { mergeImagesToPdf, PhotoBatcher } = require('./lib/pdfMerge');
+const { mergeFilesToPdf, PhotoBatcher } = require('./lib/pdfMerge');
 const org = require('./lib/organise');
 
 const CFG = {
@@ -98,20 +98,34 @@ async function notifyOwner(text) { try { if (myJid) await sendText(myJid, '🤖 
 const batcher = new PhotoBatcher({
   waitSeconds: CFG.mergeWaitSeconds,
   onFlush: async (chatId, files) => {
-    const label = files[0].label;
-    const paths = files.map(f => f.path);
+    const first = files[0];
+    const label = first.label;
     try {
-      const { bytes, pages, skipped } = await mergeImagesToPdf(paths, { label: label.replace(/\s*\(.*\)$/, ''), title: `Photos from ${label}` });
-      const name = `photos_${org.safeName(label).replace(/\s+/g, '_')}_${Date.now()}.pdf`;
-      const out = org.saveOutput(label, name, Buffer.from(bytes), { pages, source: paths.length });
-      let caption = `${label}: ${pages} photo${pages === 1 ? '' : 's'} merged into one PDF.`;
-      if (skipped.length) caption += ` Skipped ${skipped.length} file(s) that were not JPEG/PNG.`;
+      const stamp = new Date();
+      const date = stamp.toLocaleDateString('en-CA');                       // YYYY-MM-DD
+      const hhmm = stamp.toTimeString().slice(0, 5).replace(':', '');
+      const who = org.safeName(first.name || number(first.sender)).replace(/\s+/g, '_');
+      const { bytes, pages, items, skipped } = await mergeFilesToPdf(
+        files.map(f => ({ path: f.path, caption: f.caption })),
+        {
+          label: first.name || number(first.sender),
+          title: `${first.name || number(first.sender)} - ${date}`,
+          cover: {
+            title: 'Documents received on WhatsApp',
+            from: first.name || '', number: number(first.sender), group: first.group || '',
+            received: first.receivedAt.toLocaleString('en-IN'), agent: CFG.agentName,
+          },
+        });
+      const out = org.saveOutput(label, `${who}_${date}_${hhmm}.pdf`, Buffer.from(bytes), { pages, source: files.length });
+      const photos = items.filter(i => i.kind === 'Photo').length, pdfs = items.length - photos;
+      let caption = `${label}: ${photos} photo${photos === 1 ? '' : 's'}${pdfs ? ` + ${pdfs} PDF${pdfs === 1 ? '' : 's'}` : ''} merged (${pages} page${pages === 1 ? '' : 's'}).`;
+      if (skipped.length) caption += ` Skipped ${skipped.length} unsupported file(s).`;
       if (CFG.pdfTo === 'me' || CFG.pdfTo === 'both') await sendPdf(myJid, out, caption);
-      if (CFG.pdfTo === 'sender' || CFG.pdfTo === 'both') await sendPdf(chatId, out, `Merged ${pages} photo${pages === 1 ? '' : 's'} into one PDF.`);
+      if (CFG.pdfTo === 'sender' || CFG.pdfTo === 'both') await sendPdf(chatId, out, `Merged into one PDF (${pages} page${pages === 1 ? '' : 's'}).`);
       console.log(`[pdf] ${label}: ${pages} pages -> ${out}`);
     } catch (e) {
       console.error('[pdf] merge failed: ' + e.message);
-      await notifyOwner(`Could not merge photos from ${label}. They are saved in the inbox folder.`);
+      await notifyOwner(`Could not merge files from ${label}. They are saved in the inbox folder.`);
     }
   },
 });
@@ -154,9 +168,15 @@ async function onMessage(m) {
       catch (e) { console.error(`[media] could not download from ${label}: ${e.message}`); }
       if (!buf) { org.log({ type: 'media-failed', contact: label, caption: text }); return; }
       const file = org.saveMedia(label, { data: buf.toString('base64'), mimetype: media.mimetype }, { caption: text, from: jid });
-      if (CFG.autoMergePdf && /^image\//.test(media.mimetype)) {
-        const n = batcher.add(jid, { path: file, label });
-        if (n === 1) console.log(`[photos] ${label}: collecting, PDF in ${CFG.mergeWaitSeconds}s`);
+      const mergeable = /^image\/(jpeg|png)$/i.test(media.mimetype) || media.mimetype === 'application/pdf';
+      if (CFG.autoMergePdf && mergeable) {
+        const isGroup = jid.endsWith('@g.us');
+        const n = batcher.add(jid, {
+          path: file, label, caption: text, receivedAt: new Date(),
+          name: m.pushName || '', sender: isGroup ? m.key.participant : jid,
+          group: isGroup ? await groupName(jid) : '',
+        });
+        if (n === 1) console.log(`[files] ${label}: collecting, PDF in ${CFG.mergeWaitSeconds}s`);
         if (n === 1 && CFG.pdfTo !== 'me') await sendText(jid, `Got it. I will merge the photos into one PDF in ${CFG.mergeWaitSeconds}s (send *pdf* to do it now).`);
       }
       if (CFG.autoReplyQuotes && text && require('./lib/intents').isQuoteRequest(text)) await handleQuote(m, text, label);

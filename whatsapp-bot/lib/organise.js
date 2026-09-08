@@ -26,7 +26,7 @@ function contactDir(contactLabel, date = new Date()) {
 let seq = 0;
 function saveMedia(contactLabel, media, extra = {}) {
   const dir = contactDir(contactLabel);
-  const ext = extra.ext || ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'application/pdf': 'pdf' }[media.mimetype] || 'bin');
+  const ext = extra.ext || ({ 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'application/pdf': 'pdf' }[(media.mimetype || '').split(';')[0].toLowerCase()] || 'bin');
   const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
   const file = path.join(dir, `${stamp}_${++seq}.${ext}`);
   fs.writeFileSync(file, Buffer.from(media.data, 'base64'));

@@ -7,7 +7,7 @@ const path = require('path');
 const { PDFDocument } = require('pdf-lib');
 const calc = require('../lib/calculator');
 const { parseQuote } = require('../lib/intents');
-const { mergeImagesToPdf } = require('../lib/pdfMerge');
+const { mergeFilesToPdf } = require('../lib/pdfMerge');
 const { quoteText } = require('../lib/reply');
 
 (async () => {
@@ -46,15 +46,21 @@ const { quoteText } = require('../lib/reply');
   assert(r2.ok && r2.summary.total > 0, JSON.stringify(r2));
   console.log('✓ end-to-end car quote  total ₹' + r2.summary.total);
 
-  // 5. photo merge
+  // 5. photos + a 2-page PDF + a junk file, with cover page
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'merge-'));
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR4nGP4z8DwHwYBAA4DBQAsKrKfAAAAAElFTkSuQmCC', 'base64');
-  const files = [1, 2, 3].map(i => { const f = path.join(tmp, `p${i}.png`); fs.writeFileSync(f, png); return f; });
-  fs.writeFileSync(path.join(tmp, 'junk.jpg'), 'not an image'); files.push(path.join(tmp, 'junk.jpg'));
-  const m = await mergeImagesToPdf(files, { label: 'Ramesh', title: 'test' });
+  const files = [1, 2, 3].map(i => { const f = path.join(tmp, `p${i}.png`); fs.writeFileSync(f, png); return { path: f, caption: i === 1 ? 'RC front' : '' }; });
+  const src = await PDFDocument.create(); src.addPage(); src.addPage();
+  const pdfFile = path.join(tmp, 'old_policy.pdf'); fs.writeFileSync(pdfFile, await src.save()); files.push({ path: pdfFile });
+  fs.writeFileSync(path.join(tmp, 'junk.jpg'), 'not an image'); files.push({ path: path.join(tmp, 'junk.jpg') });
+  const m = await mergeFilesToPdf(files, { label: 'Ramesh', title: 'test',
+    cover: { title: 'Documents received on WhatsApp', from: 'Ramesh Kumar', number: '919876543210', group: 'SN - Vinod Oriental - Chittoor', received: new Date().toLocaleString('en-IN'), agent: 'Agent' } });
   const doc = await PDFDocument.load(m.bytes);
-  assert.strictEqual(doc.getPageCount(), 3); assert.strictEqual(m.skipped.length, 1);
-  console.log('✓ merged 3 images into a 3-page PDF, skipped 1 bad file');
+  assert.strictEqual(m.pages, 5, 'expected 3 photos + 2 pdf pages');
+  assert.strictEqual(doc.getPageCount(), 6, 'expected cover + 5 pages');
+  assert.strictEqual(m.skipped.length, 1);
+  fs.writeFileSync(path.join(tmp, 'merged.pdf'), m.bytes);
+  console.log('✓ merged 3 photos + 2-page PDF behind a cover page, skipped 1 bad file  -> ' + path.join(tmp, 'merged.pdf'));
 
   await calc.close();
   console.log('ALL OK');
