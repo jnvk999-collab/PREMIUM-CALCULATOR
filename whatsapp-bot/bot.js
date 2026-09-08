@@ -35,6 +35,7 @@ const { mergeFilesToPdf, PhotoBatcher } = require('./lib/pdfMerge');
 const org = require('./lib/organise');
 const mailer = require('./lib/mailer');
 const routes = require('./lib/routes');
+const ignore = require('./lib/ignore');
 const vehicle = require('./lib/vehicle');
 
 const CFG = {
@@ -109,6 +110,8 @@ async function allowed(m) {
   }
   const sender = m.key.fromMe ? number(myJid) : number(isGroup ? m.key.participant : jid);
   if (CFG.allowList.length && !m.key.fromMe && !CFG.allowList.includes(sender)) return false;
+  const why = ignore.isIgnored({ group: isGroup ? await groupName(jid) : '', sender: m.key.fromMe ? '' : sender });
+  if (why) { if (mediaOf(m)) console.log(`[ignore] ${why}`); return false; }
   return true;
 }
 

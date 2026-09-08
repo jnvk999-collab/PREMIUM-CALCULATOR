@@ -10,3 +10,4 @@ logs/
 .pid
 .stop
 email-routes.txt
+ignore-list.txt
