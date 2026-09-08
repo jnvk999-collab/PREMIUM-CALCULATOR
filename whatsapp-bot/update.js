@@ -65,7 +65,7 @@ async function get(f) {
   if (!changed) return console.log('Already up to date.');
   if (pkgChanged || !fs.existsSync(path.join(__dirname, 'node_modules'))) {
     console.log('Installing packages...');
-    execSync(process.platform === 'win32' ? 'npm.cmd install --no-audit --no-fund' : 'npm install --no-audit --no-fund', { cwd: __dirname, stdio: 'inherit' });
+    execSync(process.platform === 'win32' ? 'npm.cmd install --no-audit --no-fund' : 'npm install --no-audit --no-fund', { cwd: __dirname, stdio: 'inherit', windowsHide: true });
   }
   console.log(`\nUpdated ${changed} file(s).` + (process.env.__SUPERVISED ? '' : ' Restart the bot: Ctrl+C, then node bot.js'));
 })().catch(e => { console.error('Update failed: ' + e.message); process.exit(1); });

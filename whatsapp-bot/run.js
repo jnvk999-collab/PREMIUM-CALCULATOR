@@ -45,7 +45,7 @@ function shutdown(why) {
 setInterval(() => { if (fs.existsSync(STOP_FILE)) { try { fs.unlinkSync(STOP_FILE); } catch {} shutdown('stop.js'); } }, 2000);
 
 function startBot() {
-  child = spawn(process.execPath, [path.join(__dirname, 'bot.js')], { cwd: __dirname, stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...process.env, __SUPERVISED: '1' } });
+  child = spawn(process.execPath, [path.join(__dirname, 'bot.js')], { cwd: __dirname, stdio: ['ignore', 'pipe', 'pipe', 'ipc'], windowsHide: true, env: { ...process.env, __SUPERVISED: '1' } });
   log(`bot started (pid ${child.pid})`);
   const pipe = (stream) => { let buf = ''; stream.on('data', d => { buf += d.toString(); let i; while ((i = buf.indexOf('\n')) >= 0) { log(buf.slice(0, i)); buf = buf.slice(i + 1); } }); };
   pipe(child.stdout); pipe(child.stderr);
@@ -71,7 +71,7 @@ async function checkForUpdate() {
     const current = fs.existsSync(path.join(__dirname, '.version')) ? fs.readFileSync(path.join(__dirname, '.version'), 'utf8').trim() : '';
     if (latest === current) return;
     log(`update available (${latest.slice(0, 7)}), installing...`);
-    const r = spawnSync(process.execPath, [path.join(__dirname, 'update.js')], { cwd: __dirname, stdio: 'pipe', env: { ...process.env, __SUPERVISED: '1' } });
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'update.js')], { cwd: __dirname, stdio: 'pipe', windowsHide: true, env: { ...process.env, __SUPERVISED: '1' } });
     (r.stdout.toString() + r.stderr.toString()).split('\n').filter(Boolean).forEach(l => log('  ' + l));
     if (r.status !== 0) return log('update failed, keeping the current version');
     if (child) {
