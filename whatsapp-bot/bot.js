@@ -19,6 +19,18 @@ const {
   DisconnectReason, downloadMediaMessage, jidNormalizedUser,
 } = require('@whiskeysockets/baileys');
 
+// The WhatsApp library's signal layer prints raw session objects with console.log.
+// Keep them out of the log: they are noise for a human reader.
+for (const level of ['log', 'info', 'warn']) {
+  const orig = console[level].bind(console);
+  console[level] = (...args) => {
+    const first = args[0];
+    if (typeof first === 'string' && /^(Closing (open )?session|Session error|SessionEntry|Removing old closed session)/.test(first)) return;
+    if (args.some(a => a && typeof a === 'object' && !(a instanceof Error) && ('indexInfo' in a || '_chains' in a || 'pendingPreKey' in a || 'currentRatchet' in a))) return;
+    orig(...args);
+  };
+}
+
 const { mergeFilesToPdf, PhotoBatcher } = require('./lib/pdfMerge');
 const org = require('./lib/organise');
 const mailer = require('./lib/mailer');
