@@ -102,7 +102,7 @@ async function variants(file) {
   try {
     const base = sharp(file).rotate().grayscale().normalise();
     const meta = await sharp(file).rotate().metadata();
-    const width = Math.max(meta.width || 0, 1800);
+    const width = Math.min(Math.max(meta.width || 0, 1200), 1600);   // big enough to read, small enough to be quick
     const tmp = path.join(require('os').tmpdir(), 'ocr-' + process.pid + '-' + Date.now());
     const clean = tmp + '-a.png';
     await base.clone().resize({ width, withoutEnlargement: false }).sharpen().toFile(clean);
@@ -128,18 +128,18 @@ async function readOne(file, opts = {}) {
   if (!/\.(jpe?g|png)$/i.test(file)) return { tally, partial };
   try { if (fs.statSync(file).size < 1500) return { tally, partial }; } catch { return { tally, partial }; }
   const started = Date.now();
-  const deadline = started + (opts.budgetMs || 45000);
+  const deadline = started + (opts.budgetMs || 60000);
   const worker = await getWorker();
   const imgs = await variants(file);
   for (const img of imgs) {
     try {
-      const { data } = await recognize(worker, img, 20000);
+      const { data } = await recognize(worker, img, 40000);
       const text = data.text || '';
       for (const [k, v] of extractNumbers(text)) tally.set(k, (tally.get(k) || 0) + v);
       for (const [k, v] of extractPartials(text)) partial.set(k, (partial.get(k) || 0) + v);
     } catch (e) {
       console.error(`[ocr] ${path.basename(file)}: ${e.message}`);
-      if (/timed? ?out/.test(e.message)) { workerPromise = null; break; }
+      if (/timed? ?out/.test(e.message)) break;          // keep the worker; just move on
     } finally { if (img !== file) { try { fs.unlinkSync(img); } catch {} } }
     if (tally.size || Date.now() > deadline) break;
   }
