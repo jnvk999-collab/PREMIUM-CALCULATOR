@@ -275,5 +275,14 @@ async function start() {
 // A bad photo or a library hiccup must never take the bot down.
 process.on('uncaughtException', e => console.error('[fatal-caught] ' + (e && e.stack || e)));
 process.on('unhandledRejection', e => console.error('[rejection] ' + (e && e.stack || e)));
-process.on('SIGINT', async () => { try { await require('./lib/calculator').close(); } catch {} try { await vehicle.close(); } catch {} process.exit(0); });
+let stopping = false;
+process.on('SIGINT', async () => {
+  if (stopping) process.exit(0);
+  stopping = true;
+  const waiting = [...batcher.buffers.values()].reduce((n, b) => n + b.files.length, 0);
+  if (waiting) { console.log(`\nFinishing ${waiting} pending file(s) before stopping (press Ctrl+C again to force)...`); await batcher.flushAll(); }
+  try { await require('./lib/calculator').close(); } catch {}
+  try { await vehicle.close(); } catch {}
+  process.exit(0);
+});
 start().catch(e => { console.error('Fatal: ' + e.message); process.exit(1); });

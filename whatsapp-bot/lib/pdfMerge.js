@@ -123,6 +123,7 @@ class PhotoBatcher {
     return this.onFlush(chatId, b.files);
   }
   pending(chatId) { const b = this.buffers.get(chatId); return b ? b.files.length : 0; }
+  async flushAll() { for (const id of [...this.buffers.keys()]) { try { await this.flush(id); } catch {} } }
 }
 
 module.exports = { mergeFilesToPdf, mergeImagesToPdf: mergeFilesToPdf, PhotoBatcher };
