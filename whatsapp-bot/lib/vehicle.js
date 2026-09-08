@@ -120,61 +120,66 @@ async function variants(file) {
 }
 
 /**
- * @param {string[]} imageFiles  JPEG/PNG paths (PDFs are ignored)
- * @param {{maxImages?:number}} opts
- * @returns {Promise<{number:string|null, candidates:object}>}
+ * Read ONE photo. Returns { tally: Map(fullNumber->count), partial: Map(partial->count) }.
+ * Called as soon as a photo arrives so the work overlaps the 45 s collection wait.
  */
-async function findVehicleNumber(imageFiles, opts = {}) {
-  const files = imageFiles
-    .filter(f => /\.(jpe?g|png)$/i.test(f))
-    .filter(f => { try { return fs.statSync(f).size > 1500; } catch { return false; } })   // skip stubs/thumbnails
-    .slice(0, opts.maxImages || 8);
+async function readOne(file, opts = {}) {
   const tally = new Map(), partial = new Map();
-  if (!files.length) return { number: null, partial: null, candidates: {} };
+  if (!/\.(jpe?g|png)$/i.test(file)) return { tally, partial };
+  try { if (fs.statSync(file).size < 1500) return { tally, partial }; } catch { return { tally, partial }; }
   const started = Date.now();
-  console.log(`[ocr] reading ${files.length} photo${files.length === 1 ? '' : 's'} for a vehicle number...`);
+  const deadline = started + (opts.budgetMs || 45000);
   const worker = await getWorker();
-  const deadline = started + (opts.budgetMs || 90000);          // never hold a PDF for more than this
-  for (const f of files) {
-    if (Date.now() > deadline) { console.log('[ocr] time budget used up, giving up on the rest'); break; }
-    const imgs = await variants(f);
-    for (const img of imgs) {
-      try {
-        const { data } = await recognize(worker, img);
-        const text = data.text || '';
-        for (const [k, v] of extractNumbers(text)) tally.set(k, (tally.get(k) || 0) + v);
-        for (const [k, v] of extractPartials(text)) partial.set(k, (partial.get(k) || 0) + v);
-      } catch (e) {
-        console.error(`[ocr] ${path.basename(f)}: ${e.message}`);
-        if (/timeout/.test(e.message)) { workerPromise = null; break; }
-      }
-      if (img !== f) { try { fs.unlinkSync(img); } catch {} }
-      if (tally.size) break;                       // full number found: no need for more variants
-      if (Date.now() > deadline) break;
-    }
-    if (tally.size) break;
-    // no full number in this photo: partials keep accumulating across photos and variants,
-    // so the real digits (seen repeatedly) outvote one-off garbage
+  const imgs = await variants(file);
+  for (const img of imgs) {
+    try {
+      const { data } = await recognize(worker, img, 20000);
+      const text = data.text || '';
+      for (const [k, v] of extractNumbers(text)) tally.set(k, (tally.get(k) || 0) + v);
+      for (const [k, v] of extractPartials(text)) partial.set(k, (partial.get(k) || 0) + v);
+    } catch (e) {
+      console.error(`[ocr] ${path.basename(file)}: ${e.message}`);
+      if (/timed? ?out/.test(e.message)) { workerPromise = null; break; }
+    } finally { if (img !== file) { try { fs.unlinkSync(img); } catch {} } }
+    if (tally.size || Date.now() > deadline) break;
+  }
+  // remove the temp variants we did not get to
+  for (const img of imgs) if (img !== file) { try { fs.unlinkSync(img); } catch {} }
+  console.log(`[ocr] ${path.basename(file)}: ${tally.size ? 'found ' + [...tally.keys()].join('/') : partial.size ? 'partial ' + [...partial.keys()].slice(0, 3).join('/') : 'nothing'} (${Math.round((Date.now() - started) / 1000)}s)`);
+  return { tally, partial };
+}
+
+/** Combine per-photo results into a decision: { number, partial }. */
+function decide(results) {
+  const tally = new Map(), partial = new Map();
+  for (const r of results) {
+    if (!r) continue;
+    for (const [k, v] of r.tally) tally.set(k, (tally.get(k) || 0) + v);
+    for (const [k, v] of r.partial) partial.set(k, (partial.get(k) || 0) + v);
   }
   const best = m => { let b = null, n = 0; for (const [k, v] of m) if (v > n) { b = k; n = v; } return b; };
   const number = best(tally);
-  console.log(`[ocr] done in ${Math.round((Date.now() - started) / 1000)}s: ${number ? 'found ' + number : (partial.size ? 'partial only' : 'nothing readable')}`);
-  // prefer a partial with series letters over bare digits
   let part = null;
   if (!number && partial.size) {
-    // score = own count + count of the other form of the same digits (AB1234 supports 1234 and vice versa)
     const scored = [...partial].map(([k, v]) => {
       const digits = k.slice(-4);
       let support = 0;
       for (const [k2, v2] of partial) if (k2 !== k && k2.slice(-4) === digits) support += v2;
       return [k, v + support, /^[A-Z]/.test(k) ? 1 : 0];
     }).sort((a, b) => b[1] - a[1] || b[2] - a[2]);
-    // only accept when it is clearly the best (not a one-off tie)
     if (scored.length === 1 || scored[0][1] > scored[1][1]) part = scored[0][0];
   }
   return { number, partial: part, candidates: { ...Object.fromEntries(tally), ...Object.fromEntries(partial) } };
 }
 
+/** Convenience: read several photos now (used by the test). */
+async function findVehicleNumber(imageFiles, opts = {}) {
+  const files = imageFiles.filter(f => /\.(jpe?g|png)$/i.test(f)).slice(0, opts.maxImages || 8);
+  const results = [];
+  for (const f of files) results.push(await readOne(f, opts));
+  return decide(results);
+}
+
 async function close() { if (workerPromise) { try { (await workerPromise).terminate(); } catch {} workerPromise = null; } }
 
-module.exports = { findVehicleNumber, extractNumbers, extractPartials, warmUp, close };
+module.exports = { readOne, decide, findVehicleNumber, extractNumbers, extractPartials, warmUp, close };

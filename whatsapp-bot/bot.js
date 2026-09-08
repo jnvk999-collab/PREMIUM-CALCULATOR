@@ -111,13 +111,13 @@ const batcher = new PhotoBatcher({
       const hhmm = stamp.toTimeString().slice(0, 5).replace(':', '');
       let reg = null, part = null;
       if (CFG.ocrVehicle) {
-        try {
-          const r = await Promise.race([
-            vehicle.findVehicleNumber(files.map(f => f.path)),
-            new Promise((_, rej) => setTimeout(() => rej(new Error('vehicle-number step exceeded 2 minutes')), 120000)),
-          ]);
-          reg = r.number; part = r.partial;
-        } catch (e) { console.error('[ocr] skipped: ' + e.message); }
+        // results were being read as photos arrived; give stragglers at most 30 s more
+        const settled = await Promise.race([
+          Promise.all(files.map(f => f.ocr || null)),
+          new Promise(res => setTimeout(() => res(null), 30000)),
+        ]);
+        if (settled) { const d = vehicle.decide(settled); reg = d.number; part = d.partial; }
+        else console.log('[ocr] not finished in time, naming by sender');
       }
       console.log(`[pdf] ${label}: merging ${files.length} file(s)...`);
       const who = org.safeName(first.name || number(first.sender)).replace(/\s+/g, '_');
@@ -206,8 +206,12 @@ async function onMessage(m) {
       const mergeable = /^image\/(jpeg|png)$/i.test(media.mimetype) || media.mimetype === 'application/pdf';
       if (CFG.autoMergePdf && mergeable) {
         const isGroup = jid.endsWith('@g.us');
+        // start reading the vehicle number right away, while we wait for the rest of the photos
+        const ocr = (CFG.ocrVehicle && /^image\//.test(media.mimetype))
+          ? vehicle.readOne(file).catch(e => { console.error('[ocr] ' + e.message); return null; })
+          : Promise.resolve(null);
         const n = batcher.add(jid, {
-          path: file, label, caption: text, receivedAt: new Date(),
+          path: file, label, caption: text, receivedAt: new Date(), ocr,
           name: m.pushName || '', sender: isGroup ? m.key.participant : jid,
           group: isGroup ? await groupName(jid) : '',
         });
