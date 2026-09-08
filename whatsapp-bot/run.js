@@ -30,6 +30,19 @@ function log(line) {
 }
 
 let child = null, restarting = false;
+const PID_FILE = path.join(__dirname, '.pid'), STOP_FILE = path.join(__dirname, '.stop');
+fs.writeFileSync(PID_FILE, String(process.pid));
+try { fs.unlinkSync(STOP_FILE); } catch {}
+let shuttingDown = false;
+function shutdown(why) {
+  if (shuttingDown) return; shuttingDown = true;
+  log('stopping (' + why + ')');
+  const bye = () => { try { fs.unlinkSync(PID_FILE); } catch {} process.exit(0); };
+  if (child) { try { child.send('shutdown'); } catch { child.kill(); } child.on('exit', bye); setTimeout(bye, 140000); }
+  else bye();
+}
+// `node stop.js` asks us to stop by creating a .stop file (works without a window)
+setInterval(() => { if (fs.existsSync(STOP_FILE)) { try { fs.unlinkSync(STOP_FILE); } catch {} shutdown('stop.js'); } }, 2000);
 
 function startBot() {
   child = spawn(process.execPath, [path.join(__dirname, 'bot.js')], { cwd: __dirname, stdio: ['ignore', 'pipe', 'pipe', 'ipc'], env: { ...process.env, __SUPERVISED: '1' } });
@@ -37,8 +50,9 @@ function startBot() {
   const pipe = (stream) => { let buf = ''; stream.on('data', d => { buf += d.toString(); let i; while ((i = buf.indexOf('\n')) >= 0) { log(buf.slice(0, i)); buf = buf.slice(i + 1); } }); };
   pipe(child.stdout); pipe(child.stderr);
   child.on('exit', (code) => {
-    log(`bot stopped (code ${code})${restarting ? ', restarting with the update' : ', restarting in 5 s'}`);
     child = null;
+    if (shuttingDown) return;
+    log(`bot stopped (code ${code})${restarting ? ', restarting with the update' : ', restarting in 5 s'}`);
     setTimeout(startBot, restarting ? 1000 : 5000);
     restarting = false;
   });
@@ -72,4 +86,5 @@ async function checkForUpdate() {
 startBot();
 setTimeout(checkForUpdate, 60 * 1000);
 setInterval(checkForUpdate, CHECK_MIN * 60 * 1000);
-process.on('SIGINT', () => { log('stopping'); if (child) { try { child.send('shutdown'); } catch { child.kill(); } setTimeout(() => process.exit(0), 15000); child.on('exit', () => process.exit(0)); } else process.exit(0); });
+process.on('SIGINT', () => shutdown('Ctrl+C'));
+process.on('SIGTERM', () => shutdown('stop'));

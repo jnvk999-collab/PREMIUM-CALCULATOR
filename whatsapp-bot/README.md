@@ -36,10 +36,12 @@ The important design choice: **the bot does not re-implement any rating logic.**
 ## Running it for good
 
 ```
-node run.js
+node start.js      # runs in the background, no window
+node status.js     # running? version? last log lines
+node stop.js       # stops it (finishes pending photos first)
 ```
 
-starts the bot, restarts it if it stops, checks GitHub every 30 minutes and installs updates by itself (finishing any pending photos first), and writes logs to `logs/`. On Windows, `node install-autostart.js` makes it start at every login.
+The background process (`run.js`) restarts the bot if it stops, checks GitHub every 30 minutes and installs updates by itself (finishing any pending photos first), and writes logs to `logs/`. On Windows, `node install-autostart.js` makes it start at every login. `node run.js` runs the same thing in the foreground if you want to watch it.
 
 ## Updating by hand
 
