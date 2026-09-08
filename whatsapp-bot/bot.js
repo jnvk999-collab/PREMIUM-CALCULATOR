@@ -109,20 +109,22 @@ const batcher = new PhotoBatcher({
       const stamp = new Date();
       const date = stamp.toLocaleDateString('en-CA');                       // YYYY-MM-DD
       const hhmm = stamp.toTimeString().slice(0, 5).replace(':', '');
-      let reg = null;
+      let reg = null, part = null;
       if (CFG.ocrVehicle) {
-        try { reg = (await vehicle.findVehicleNumber(files.map(f => f.path))).number; }
+        try { const r = await vehicle.findVehicleNumber(files.map(f => f.path)); reg = r.number; part = r.partial; }
         catch (e) { console.error('[ocr] ' + e.message); }
       }
       const who = org.safeName(first.name || number(first.sender)).replace(/\s+/g, '_');
-      const baseName = reg ? `${reg}_${date}` : `${who}_${date}_${hhmm}`;
+      // full number -> AP26AB1234_date ; only last digits readable -> 1234_date_time ; nothing -> Name_date_time
+      const baseName = reg ? `${reg}_${date}` : part ? `${part}_${date}_${hhmm}` : `${who}_${date}_${hhmm}`;
+      const vehLabel = reg ? prettyReg(reg) : part ? `...${part} (partial)` : '';
       const { bytes, pages, items, skipped } = await mergeFilesToPdf(
         files.map(f => ({ path: f.path, caption: f.caption })),
         {
-          label: reg ? prettyReg(reg) : (first.name || number(first.sender)),
-          title: `${reg ? prettyReg(reg) + ' - ' : ''}${first.name || number(first.sender)} - ${date}`,
+          label: vehLabel || (first.name || number(first.sender)),
+          title: `${vehLabel ? vehLabel + ' - ' : ''}${first.name || number(first.sender)} - ${date}`,
           cover: {
-            title: 'Documents received on WhatsApp', vehicle: prettyReg(reg),
+            title: 'Documents received on WhatsApp', vehicle: vehLabel,
             from: first.name || '', number: number(first.sender), group: first.group || '',
             received: first.receivedAt.toLocaleString('en-IN'), agent: CFG.agentName,
           },
@@ -132,16 +134,16 @@ const batcher = new PhotoBatcher({
       const out = org.saveOutput(label, fname, Buffer.from(bytes), { pages, source: files.length, vehicle: reg });
       const archived = org.archiveMerged(fname, Buffer.from(bytes), stamp);
       const photos = items.filter(i => i.kind === 'Photo').length, pdfs = items.length - photos;
-      let caption = `${reg ? prettyReg(reg) + ' - ' : ''}${label}: ${photos} photo${photos === 1 ? '' : 's'}${pdfs ? ` + ${pdfs} PDF${pdfs === 1 ? '' : 's'}` : ''} merged (${pages} page${pages === 1 ? '' : 's'}).`;
+      let caption = `${vehLabel ? vehLabel + ' - ' : ''}${label}: ${photos} photo${photos === 1 ? '' : 's'}${pdfs ? ` + ${pdfs} PDF${pdfs === 1 ? '' : 's'}` : ''} merged (${pages} page${pages === 1 ? '' : 's'}).`;
       if (skipped.length) caption += ` Skipped ${skipped.length} unsupported file(s).`;
       if (CFG.pdfTo === 'me' || CFG.pdfTo === 'both') await sendPdf(myJid, out, caption);
       if (CFG.pdfTo === 'sender' || CFG.pdfTo === 'both') await sendPdf(chatId, out, `Merged into one PDF (${pages} page${pages === 1 ? '' : 's'}).`);
-      console.log(`[pdf] ${label}: ${pages} pages${reg ? ', vehicle ' + prettyReg(reg) : ', no vehicle number found'} -> ${archived}`);
+      console.log(`[pdf] ${label}: ${pages} pages${vehLabel ? ', vehicle ' + vehLabel : ', no vehicle number found'} -> ${archived}`);
       if (mailer.enabled()) {
         try {
           await mailer.sendPdf({
             file: out, filename: path.basename(out),
-            subject: `${reg ? prettyReg(reg) + ' - ' : ''}${first.name || number(first.sender)} - ${date} - ${pages} page${pages === 1 ? '' : 's'}${first.group ? ` (${first.group})` : ''}`,
+            subject: `${vehLabel ? vehLabel + ' - ' : ''}${first.name || number(first.sender)} - ${date} - ${pages} page${pages === 1 ? '' : 's'}${first.group ? ` (${first.group})` : ''}`,
             text: caption + '\n\n' + items.map((it, i) => `${i + 1}. ${it.kind} ${it.name}${it.caption ? ' - ' + it.caption : ''}`).join('\n'),
           });
           console.log(`[mail] sent ${path.basename(out)}`);

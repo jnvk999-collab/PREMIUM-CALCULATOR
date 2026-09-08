@@ -14,6 +14,29 @@ const STATE_CODES = new Set(('AN AP AR AS BR CG CH DD DL DN GA GJ HP HR JH JK KA
 const fixDigits = s => s.replace(/O/g, '0').replace(/[Il|]/g, '1').replace(/S/g, '5').replace(/B/g, '8').replace(/Z/g, '2');
 const fixLetters = s => s.replace(/0/g, 'O').replace(/1/g, 'I').replace(/5/g, 'S').replace(/8/g, 'B').replace(/2/g, 'Z');
 
+// Partial fallback: series letters + last four digits (e.g. "AB 1234" -> AB1234),
+// or a state-code prefix with unreadable middle and readable last four ("AP26 ?? 1234" -> 1234).
+const PARTIAL_RE = /\b([A-Z]{1,3})[\s\-.]*(\d{4})\b/g;
+const TAIL_RE = /\b[A-Z]{2}[\s\-.]*\d{2}[\s\-.]*\S{0,4}[\s\-.]*(\d{4})\b/g;
+const NOT_SERIES = new Set(['NO', 'RC', 'CC', 'KG', 'KW', 'DT', 'RTO', 'MFG', 'DOB', 'PIN', 'REG', 'REGN']);
+function extractPartials(text) {
+  const found = new Map();
+  const t = text.toUpperCase();
+  let m;
+  while ((m = PARTIAL_RE.exec(t))) {
+    const series = fixLetters(m[1]); const digits = fixDigits(m[2]);
+    if (NOT_SERIES.has(series) || /^(19|20)\d\d$/.test(digits)) continue;   // skip years
+    const key = series + digits;
+    found.set(key, (found.get(key) || 0) + 1);
+  }
+  while ((m = TAIL_RE.exec(t))) {
+    const digits = fixDigits(m[1]);
+    if (/^(19|20)\d\d$/.test(digits)) continue;
+    found.set(digits, (found.get(digits) || 0) + 1);
+  }
+  return found;
+}
+
 function extractNumbers(text) {
   const found = new Map();
   const t = text.toUpperCase();
@@ -53,6 +76,31 @@ function recognize(worker, file, ms = 30000) {
   ]);
 }
 
+// Clean-up variants of a photo for OCR: EXIF-straightened, grayscale, enlarged,
+// normalised, sharpened; plus 90/270 rotations for sideways photos.
+async function variants(file) {
+  let sharp; try { sharp = require('sharp'); } catch { return [file]; }
+  const out = [];
+  try {
+    const base = sharp(file).rotate().grayscale().normalise();
+    const meta = await sharp(file).rotate().metadata();
+    const width = Math.max(meta.width || 0, 1800);
+    const tmp = path.join(require('os').tmpdir(), 'ocr-' + process.pid + '-' + Date.now());
+    const clean = tmp + '-a.png';
+    await base.clone().resize({ width, withoutEnlargement: false }).sharpen().toFile(clean);
+    out.push(clean);
+    const thresh = tmp + '-b.png';
+    await base.clone().resize({ width }).threshold(150).toFile(thresh);
+    out.push(thresh);
+    for (const angle of [90, 270]) {
+      const r = tmp + '-r' + angle + '.png';
+      await base.clone().resize({ width }).sharpen().rotate(angle).toFile(r);
+      out.push(r);
+    }
+  } catch (e) { /* fall back to the original */ }
+  return out.length ? out : [file];
+}
+
 /**
  * @param {string[]} imageFiles  JPEG/PNG paths (PDFs are ignored)
  * @param {{maxImages?:number}} opts
@@ -61,25 +109,48 @@ function recognize(worker, file, ms = 30000) {
 async function findVehicleNumber(imageFiles, opts = {}) {
   const files = imageFiles
     .filter(f => /\.(jpe?g|png)$/i.test(f))
-    .filter(f => { try { return fs.statSync(f).size > 5000; } catch { return false; } })   // skip stubs/thumbnails
+    .filter(f => { try { return fs.statSync(f).size > 1500; } catch { return false; } })   // skip stubs/thumbnails
     .slice(0, opts.maxImages || 8);
-  const tally = new Map();
-  if (!files.length) return { number: null, candidates: {} };
+  const tally = new Map(), partial = new Map();
+  if (!files.length) return { number: null, partial: null, candidates: {} };
   const worker = await getWorker();
   for (const f of files) {
-    try {
-      const { data } = await recognize(worker, f);
-      for (const [k, v] of extractNumbers(data.text || '')) tally.set(k, (tally.get(k) || 0) + v);
-    } catch (e) {
-      console.error(`[ocr] ${path.basename(f)}: ${e.message}`);
-      if (/timeout/.test(e.message)) { workerPromise = null; break; }
+    const imgs = await variants(f);
+    for (const img of imgs) {
+      try {
+        const { data } = await recognize(worker, img);
+        const text = data.text || '';
+        for (const [k, v] of extractNumbers(text)) tally.set(k, (tally.get(k) || 0) + v);
+        for (const [k, v] of extractPartials(text)) partial.set(k, (partial.get(k) || 0) + v);
+      } catch (e) {
+        console.error(`[ocr] ${path.basename(f)}: ${e.message}`);
+        if (/timeout/.test(e.message)) { workerPromise = null; break; }
+      }
+      if (img !== f) { try { fs.unlinkSync(img); } catch {} }
+      if (tally.size) break;                       // full number found: no need for more variants
     }
+    if (tally.size) break;
+    // no full number in this photo: partials keep accumulating across photos and variants,
+    // so the real digits (seen repeatedly) outvote one-off garbage
   }
-  let best = null, bestN = 0;
-  for (const [k, v] of tally) if (v > bestN) { best = k; bestN = v; }
-  return { number: best, candidates: Object.fromEntries(tally) };
+  const best = m => { let b = null, n = 0; for (const [k, v] of m) if (v > n) { b = k; n = v; } return b; };
+  const number = best(tally);
+  // prefer a partial with series letters over bare digits
+  let part = null;
+  if (!number && partial.size) {
+    // score = own count + count of the other form of the same digits (AB1234 supports 1234 and vice versa)
+    const scored = [...partial].map(([k, v]) => {
+      const digits = k.slice(-4);
+      let support = 0;
+      for (const [k2, v2] of partial) if (k2 !== k && k2.slice(-4) === digits) support += v2;
+      return [k, v + support, /^[A-Z]/.test(k) ? 1 : 0];
+    }).sort((a, b) => b[1] - a[1] || b[2] - a[2]);
+    // only accept when it is clearly the best (not a one-off tie)
+    if (scored.length === 1 || scored[0][1] > scored[1][1]) part = scored[0][0];
+  }
+  return { number, partial: part, candidates: { ...Object.fromEntries(tally), ...Object.fromEntries(partial) } };
 }
 
 async function close() { if (workerPromise) { try { (await workerPromise).terminate(); } catch {} workerPromise = null; } }
 
-module.exports = { findVehicleNumber, extractNumbers, close };
+module.exports = { findVehicleNumber, extractNumbers, extractPartials, close };
