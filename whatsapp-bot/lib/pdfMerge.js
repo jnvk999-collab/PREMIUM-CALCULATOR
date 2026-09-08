@@ -100,19 +100,30 @@ async function mergeFilesToPdf(files, opts = {}) {
   return { bytes: await pdf.save(), pages: n, items, skipped };
 }
 
-/** Per-chat buffer with a quiet-period timer. */
+/**
+ * Per-chat buffer with a quiet-period timer.
+ * Files carry the time they were sent (`sentAt`). If a new file was sent more
+ * than the wait period after the previous one, the previous batch is closed
+ * first, so photos received while the bot was offline are grouped the way
+ * they were sent, not all lumped together on catch-up.
+ */
 class PhotoBatcher {
   constructor({ waitSeconds = 45, onFlush }) {
     this.wait = waitSeconds * 1000;
     this.onFlush = onFlush;
-    this.buffers = new Map();   // chatId -> { files:[], timer }
+    this.buffers = new Map();   // chatId -> { files:[], timer, lastSentAt }
   }
-  add(chatId, file) {
+  async add(chatId, file) {
+    const sentAt = file.sentAt ? +file.sentAt : Date.now();
     let b = this.buffers.get(chatId);
-    if (!b) { b = { files: [], timer: null }; this.buffers.set(chatId, b); }
+    if (b && b.lastSentAt && sentAt - b.lastSentAt > this.wait) { await this.flush(chatId); b = null; }
+    if (!b) { b = { files: [], timer: null, lastSentAt: 0 }; this.buffers.set(chatId, b); }
     b.files.push(file);
+    b.lastSentAt = Math.max(b.lastSentAt, sentAt);
     if (b.timer) clearTimeout(b.timer);
-    b.timer = setTimeout(() => this.flush(chatId), this.wait);
+    // old messages (catch-up) close quickly; live bursts get the full wait
+    const age = Date.now() - sentAt;
+    b.timer = setTimeout(() => this.flush(chatId), age > this.wait ? 8000 : this.wait);
     return b.files.length;
   }
   async flush(chatId) {

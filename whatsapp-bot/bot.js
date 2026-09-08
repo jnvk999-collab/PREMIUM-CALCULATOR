@@ -44,6 +44,18 @@ const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 
 let sock = null;
 let myJid = null;
+
+// Remember which messages we already handled, so a reconnect never makes a second PDF.
+const SEEN_FILE = path.join(org.ROOT, 'processed.json');
+let seen = [];
+try { seen = JSON.parse(fs.readFileSync(SEEN_FILE, 'utf8')); } catch {}
+const seenSet = new Set(seen);
+function markSeen(id) {
+  if (!id || seenSet.has(id)) return;
+  seenSet.add(id); seen.push(id);
+  if (seen.length > 5000) { const drop = seen.splice(0, seen.length - 5000); drop.forEach(d => seenSet.delete(d)); }
+  try { fs.mkdirSync(org.ROOT, { recursive: true }); fs.writeFileSync(SEEN_FILE, JSON.stringify(seen)); } catch {}
+}
 const groupNames = new Map();          // jid -> group subject
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -106,7 +118,7 @@ const batcher = new PhotoBatcher({
     const first = files[0];
     const label = first.label;
     try {
-      const stamp = new Date();
+      const stamp = first.sentAt ? new Date(first.sentAt) : new Date();   // file under the day the photos were sent
       const date = stamp.toLocaleDateString('en-CA');                       // YYYY-MM-DD
       const hhmm = stamp.toTimeString().slice(0, 5).replace(':', '');
       let reg = null, part = null;
@@ -132,7 +144,7 @@ const batcher = new PhotoBatcher({
           cover: {
             title: 'Documents received on WhatsApp', vehicle: vehLabel,
             from: first.name || '', number: number(first.sender), group: first.group || '',
-            received: first.receivedAt.toLocaleString('en-IN'), agent: CFG.agentName,
+            received: first.receivedAt.toLocaleString('en-IN') + (Date.now() - first.receivedAt > 10 * 60000 ? `  (processed ${new Date().toLocaleString('en-IN')})` : ''), agent: CFG.agentName,
           },
         });
       let fname = `${baseName}.pdf`;
@@ -191,10 +203,15 @@ async function handleQuote(m, text, label) {
 // ── message handling ───────────────────────────────────────────────────────
 async function onMessage(m) {
   if (!m.message) return;
+  if (m.key.id && seenSet.has(m.key.id)) return;          // already handled before a restart/reconnect
   if (!(await allowed(m))) return;
   const jid = m.key.remoteJid;
   const label = await contactLabel(m);
   const text = textOf(m);
+  const sentAt = m.messageTimestamp ? new Date(Number(m.messageTimestamp) * 1000) : new Date();
+  const ageMin = Math.round((Date.now() - sentAt) / 60000);
+  if (ageMin > 2) console.log(`[offline] catching up: message from ${label} sent ${ageMin} min ago (${sentAt.toLocaleString('en-IN')})`);
+  markSeen(m.key.id);
   try {
     const media = mediaOf(m);
     if (media) {
@@ -210,8 +227,8 @@ async function onMessage(m) {
         const ocr = (CFG.ocrVehicle && /^image\//.test(media.mimetype))
           ? vehicle.readOne(file).catch(e => { console.error('[ocr] ' + e.message); return null; })
           : Promise.resolve(null);
-        const n = batcher.add(jid, {
-          path: file, label, caption: text, receivedAt: new Date(), ocr,
+        const n = await batcher.add(jid, {
+          path: file, label, caption: text, receivedAt: sentAt, sentAt, processedAt: new Date(), ocr,
           name: m.pushName || '', sender: isGroup ? m.key.participant : jid,
           group: isGroup ? await groupName(jid) : '',
         });
@@ -287,6 +304,7 @@ async function start() {
       console.log('==============================================\n');
       qrcodeTerminal.generate(qr, { small: true });
     }
+    if (u.receivedPendingNotifications) console.log('[whatsapp] caught up with everything received while offline');
     if (connection === 'open') {
       try { fs.unlinkSync(QR_PNG); } catch {}
       myJid = jidNormalizedUser(sock.user.id);
