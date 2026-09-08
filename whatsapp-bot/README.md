@@ -73,6 +73,7 @@ Settings (`.env`):
 | `PDF_TO` | Where the merged PDF goes: `me` (your own chat), `sender`, or `both` | me |
 | `AUTO_QUOTE` | `1` to answer one-line quote requests automatically | 0 (off) |
 | `INBOX_DIR` | Where files are stored | `./inbox` |
+| `EMAIL_TO` / `EMAIL_FROM` / `EMAIL_APP_PASSWORD` | Also email every merged PDF (Gmail App Password; see `.env.example`) | off |
 
 ## Which WhatsApp connection to use
 

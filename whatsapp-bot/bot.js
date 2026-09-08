@@ -21,6 +21,7 @@ const {
 
 const { mergeFilesToPdf, PhotoBatcher } = require('./lib/pdfMerge');
 const org = require('./lib/organise');
+const mailer = require('./lib/mailer');
 
 const CFG = {
   agentName: process.env.AGENT_NAME || '',
@@ -123,6 +124,19 @@ const batcher = new PhotoBatcher({
       if (CFG.pdfTo === 'me' || CFG.pdfTo === 'both') await sendPdf(myJid, out, caption);
       if (CFG.pdfTo === 'sender' || CFG.pdfTo === 'both') await sendPdf(chatId, out, `Merged into one PDF (${pages} page${pages === 1 ? '' : 's'}).`);
       console.log(`[pdf] ${label}: ${pages} pages -> ${out}`);
+      if (mailer.enabled()) {
+        try {
+          await mailer.sendPdf({
+            file: out, filename: path.basename(out),
+            subject: `${first.name || number(first.sender)} - ${date} - ${pages} page${pages === 1 ? '' : 's'}${first.group ? ` (${first.group})` : ''}`,
+            text: caption + '\n\n' + items.map((it, i) => `${i + 1}. ${it.kind} ${it.name}${it.caption ? ' - ' + it.caption : ''}`).join('\n'),
+          });
+          console.log(`[mail] sent ${path.basename(out)}`);
+        } catch (e) {
+          console.error('[mail] failed: ' + e.message);
+          await notifyOwner(`PDF was sent here but the email failed: ${e.message}`);
+        }
+      }
     } catch (e) {
       console.error('[pdf] merge failed: ' + e.message);
       await notifyOwner(`Could not merge files from ${label}. They are saved in the inbox folder.`);
@@ -215,6 +229,7 @@ async function start() {
     if (connection === 'open') {
       try { fs.unlinkSync(QR_PNG); } catch {}
       myJid = jidNormalizedUser(sock.user.id);
+      if (mailer.enabled()) mailer.verify().then(() => console.log('[mail] email login OK, PDFs will also be emailed to ' + process.env.EMAIL_TO)).catch(e => console.error('[mail] email login FAILED: ' + e.message));
       console.log(`Ready as ${number(myJid)}. Inbox: ${org.ROOT}  merge wait: ${CFG.mergeWaitSeconds}s  PDF to: ${CFG.pdfTo}  groups: ${CFG.replyInGroups ? (CFG.allowGroups.join(', ') || 'all') : 'off'}`);
       if (CFG.replyInGroups) {
         try {
