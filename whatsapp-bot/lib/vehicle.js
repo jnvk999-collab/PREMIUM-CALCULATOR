@@ -54,18 +54,36 @@ function extractNumbers(text) {
   return found;
 }
 
+function withTimeout(promise, ms, what) {
+  let t;
+  return Promise.race([
+    promise.finally(() => clearTimeout(t)),
+    new Promise((_, rej) => { t = setTimeout(() => rej(new Error(what + ' timed out after ' + Math.round(ms / 1000) + 's')), ms); }),
+  ]);
+}
+
 let workerPromise = null;
 async function getWorker() {
   if (!workerPromise) {
     const { createWorker } = require('tesseract.js');
     const cache = path.resolve(__dirname, '..', '.tessdata');
     fs.mkdirSync(cache, { recursive: true });
-    workerPromise = createWorker('eng', 1, {
+    const firstTime = !fs.readdirSync(cache).some(f => f.startsWith('eng'));
+    if (firstTime) console.log('[ocr] first run: downloading English reading data (about 4 MB)...');
+    const p = createWorker('eng', 1, {
       cachePath: cache, logger: () => {},
       errorHandler: (e) => { console.error('[ocr] worker error: ' + (e && e.message || e)); workerPromise = null; },
     });
+    workerPromise = withTimeout(p, 120000, 'OCR start-up').then(w => { if (firstTime) console.log('[ocr] reading data ready'); return w; })
+      .catch(e => { workerPromise = null; throw e; });
   }
   return workerPromise;
+}
+
+/** Call at startup so a download problem shows up immediately, not on the first PDF. */
+async function warmUp() {
+  try { await getWorker(); console.log('[ocr] vehicle-number reader ready'); }
+  catch (e) { console.error('[ocr] reader not available: ' + e.message + ' (PDFs will be named by sender until this works)'); }
 }
 
 // Recognise with a timeout so a stuck worker cannot hold the merge forever.
@@ -113,8 +131,12 @@ async function findVehicleNumber(imageFiles, opts = {}) {
     .slice(0, opts.maxImages || 8);
   const tally = new Map(), partial = new Map();
   if (!files.length) return { number: null, partial: null, candidates: {} };
+  const started = Date.now();
+  console.log(`[ocr] reading ${files.length} photo${files.length === 1 ? '' : 's'} for a vehicle number...`);
   const worker = await getWorker();
+  const deadline = started + (opts.budgetMs || 90000);          // never hold a PDF for more than this
   for (const f of files) {
+    if (Date.now() > deadline) { console.log('[ocr] time budget used up, giving up on the rest'); break; }
     const imgs = await variants(f);
     for (const img of imgs) {
       try {
@@ -128,6 +150,7 @@ async function findVehicleNumber(imageFiles, opts = {}) {
       }
       if (img !== f) { try { fs.unlinkSync(img); } catch {} }
       if (tally.size) break;                       // full number found: no need for more variants
+      if (Date.now() > deadline) break;
     }
     if (tally.size) break;
     // no full number in this photo: partials keep accumulating across photos and variants,
@@ -135,6 +158,7 @@ async function findVehicleNumber(imageFiles, opts = {}) {
   }
   const best = m => { let b = null, n = 0; for (const [k, v] of m) if (v > n) { b = k; n = v; } return b; };
   const number = best(tally);
+  console.log(`[ocr] done in ${Math.round((Date.now() - started) / 1000)}s: ${number ? 'found ' + number : (partial.size ? 'partial only' : 'nothing readable')}`);
   // prefer a partial with series letters over bare digits
   let part = null;
   if (!number && partial.size) {
@@ -153,4 +177,4 @@ async function findVehicleNumber(imageFiles, opts = {}) {
 
 async function close() { if (workerPromise) { try { (await workerPromise).terminate(); } catch {} workerPromise = null; } }
 
-module.exports = { findVehicleNumber, extractNumbers, extractPartials, close };
+module.exports = { findVehicleNumber, extractNumbers, extractPartials, warmUp, close };

@@ -111,9 +111,15 @@ const batcher = new PhotoBatcher({
       const hhmm = stamp.toTimeString().slice(0, 5).replace(':', '');
       let reg = null, part = null;
       if (CFG.ocrVehicle) {
-        try { const r = await vehicle.findVehicleNumber(files.map(f => f.path)); reg = r.number; part = r.partial; }
-        catch (e) { console.error('[ocr] ' + e.message); }
+        try {
+          const r = await Promise.race([
+            vehicle.findVehicleNumber(files.map(f => f.path)),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('vehicle-number step exceeded 2 minutes')), 120000)),
+          ]);
+          reg = r.number; part = r.partial;
+        } catch (e) { console.error('[ocr] skipped: ' + e.message); }
       }
+      console.log(`[pdf] ${label}: merging ${files.length} file(s)...`);
       const who = org.safeName(first.name || number(first.sender)).replace(/\s+/g, '_');
       // full number -> AP26AB1234_date ; only last digits readable -> 1234_date_time ; nothing -> Name_date_time
       const baseName = reg ? `${reg}_${date}` : part ? `${part}_${date}_${hhmm}` : `${who}_${date}_${hhmm}`;
@@ -244,6 +250,7 @@ async function start() {
     if (connection === 'open') {
       try { fs.unlinkSync(QR_PNG); } catch {}
       myJid = jidNormalizedUser(sock.user.id);
+      if (CFG.ocrVehicle) vehicle.warmUp();
       if (mailer.enabled()) mailer.verify().then(() => console.log('[mail] email login OK, PDFs will also be emailed to ' + process.env.EMAIL_TO)).catch(e => console.error('[mail] email login FAILED: ' + e.message));
       console.log(`Ready as ${number(myJid)}. Inbox: ${org.ROOT}  Merged PDFs: ${org.MERGED_ROOT}  merge wait: ${CFG.mergeWaitSeconds}s  PDF to: ${CFG.pdfTo}  groups: ${CFG.replyInGroups ? (CFG.allowGroups.join(', ') || 'all') : 'off'}`);
       if (CFG.replyInGroups) {
