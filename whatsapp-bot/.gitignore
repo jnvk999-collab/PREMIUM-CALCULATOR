@@ -5,3 +5,5 @@ inbox/
 qr.png
 .tessdata/
 merged/
+logs/
+.version

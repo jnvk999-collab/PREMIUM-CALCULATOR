@@ -14,12 +14,13 @@ const BRANCH = 'claude/whatsapp-photo-pdf-automation-mgr9gu';
 // raw.githubusercontent.com caches branch URLs for minutes, which served stale
 // file lists. Resolve the branch to its exact commit first, then fetch by
 // commit: those URLs are immutable and never stale.
+let LATEST = null;
 let BASE = process.env.UPDATE_BASE_URL || `https://raw.githubusercontent.com/${REPO}/${BRANCH}/whatsapp-bot/`;
 async function pinToLatestCommit() {
   if (process.env.UPDATE_BASE_URL) return;
   try {
     const res = await fetch(`https://api.github.com/repos/${REPO}/commits/${encodeURIComponent(BRANCH)}`, { headers: { 'User-Agent': 'oic-bot-updater', 'Accept': 'application/vnd.github.sha' } });
-    if (res.ok) { const sha = (await res.text()).trim(); if (/^[0-9a-f]{40}$/.test(sha)) { BASE = `https://raw.githubusercontent.com/${REPO}/${sha}/whatsapp-bot/`; console.log('  latest version: ' + sha.slice(0, 7)); } }
+    if (res.ok) { const sha = (await res.text()).trim(); if (/^[0-9a-f]{40}$/.test(sha)) { BASE = `https://raw.githubusercontent.com/${REPO}/${sha}/whatsapp-bot/`; LATEST = sha; console.log('  latest version: ' + sha.slice(0, 7)); } }
   } catch { /* fall back to branch URL */ }
 }
 const FALLBACK = ['bot.js', 'update.js', 'package.json', 'lib/calculator.js', 'lib/intents.js', 'lib/organise.js', 'lib/pdfMerge.js', 'lib/reply.js', 'lib/mailer.js'];
@@ -60,10 +61,11 @@ async function get(f) {
     changed++;
     if (f === 'package.json') pkgChanged = true;
   }
+  if (LATEST) fs.writeFileSync(path.join(__dirname, '.version'), LATEST);
   if (!changed) return console.log('Already up to date.');
   if (pkgChanged || !fs.existsSync(path.join(__dirname, 'node_modules'))) {
     console.log('Installing packages...');
     execSync(process.platform === 'win32' ? 'npm.cmd install --no-audit --no-fund' : 'npm install --no-audit --no-fund', { cwd: __dirname, stdio: 'inherit' });
   }
-  console.log(`\nUpdated ${changed} file(s). Restart the bot: Ctrl+C, then node bot.js`);
+  console.log(`\nUpdated ${changed} file(s).` + (process.env.__SUPERVISED ? '' : ' Restart the bot: Ctrl+C, then node bot.js'));
 })().catch(e => { console.error('Update failed: ' + e.message); process.exit(1); });

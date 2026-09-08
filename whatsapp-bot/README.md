@@ -33,7 +33,15 @@ WhatsApp (your number, linked like WhatsApp Web)
 
 The important design choice: **the bot does not re-implement any rating logic.** It opens `index.html` once in headless Chromium and drives it the same way the calculator's own 700-case regression suite does. When you upload a new `index.html` with new rates, the bot prices with the new rates on its next quote. The smoke test proves this by checking one of the calculator's golden cases (₹1,915) through the bot's driver.
 
-## Updating
+## Running it for good
+
+```
+node run.js
+```
+
+starts the bot, restarts it if it stops, checks GitHub every 30 minutes and installs updates by itself (finishing any pending photos first), and writes logs to `logs/`. On Windows, `node install-autostart.js` makes it start at every login.
+
+## Updating by hand
 
 ```
 node update.js
