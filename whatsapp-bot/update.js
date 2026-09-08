@@ -9,8 +9,19 @@ const fs = require('fs');
 const path = require('path');
 const { execSync, spawnSync } = require('child_process');
 
-const BASE = process.env.UPDATE_BASE_URL
-  || 'https://raw.githubusercontent.com/jnvk999-collab/PREMIUM-CALCULATOR/claude/whatsapp-photo-pdf-automation-mgr9gu/whatsapp-bot/';
+const REPO = 'jnvk999-collab/PREMIUM-CALCULATOR';
+const BRANCH = 'claude/whatsapp-photo-pdf-automation-mgr9gu';
+// raw.githubusercontent.com caches branch URLs for minutes, which served stale
+// file lists. Resolve the branch to its exact commit first, then fetch by
+// commit: those URLs are immutable and never stale.
+let BASE = process.env.UPDATE_BASE_URL || `https://raw.githubusercontent.com/${REPO}/${BRANCH}/whatsapp-bot/`;
+async function pinToLatestCommit() {
+  if (process.env.UPDATE_BASE_URL) return;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/commits/${encodeURIComponent(BRANCH)}`, { headers: { 'User-Agent': 'oic-bot-updater', 'Accept': 'application/vnd.github.sha' } });
+    if (res.ok) { const sha = (await res.text()).trim(); if (/^[0-9a-f]{40}$/.test(sha)) { BASE = `https://raw.githubusercontent.com/${REPO}/${sha}/whatsapp-bot/`; console.log('  latest version: ' + sha.slice(0, 7)); } }
+  } catch { /* fall back to branch URL */ }
+}
 const FALLBACK = ['bot.js', 'update.js', 'package.json', 'lib/calculator.js', 'lib/intents.js', 'lib/organise.js', 'lib/pdfMerge.js', 'lib/reply.js', 'lib/mailer.js'];
 
 async function get(f) {
@@ -20,6 +31,7 @@ async function get(f) {
 }
 
 (async () => {
+  await pinToLatestCommit();
   let files = FALLBACK;
   try { files = JSON.parse((await get('update-manifest.json')).toString()); } catch (e) { console.log('  (manifest unavailable, using built-in list)'); }
 
