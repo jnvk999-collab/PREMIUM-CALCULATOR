@@ -4,15 +4,26 @@
  */
 const fs = require('fs');
 const path = require('path');
-const FILE = path.resolve(__dirname, '..', 'email-routes.txt');
+const DIR = path.resolve(__dirname, '..');
+// Accept the usual naming slips: email-routes.txt, email-routes.txt.txt, email-routes, Email-Routes.TXT ...
+function findFile() {
+  try {
+    const names = fs.readdirSync(DIR).filter(f => /^email-routes(\.txt)*$/i.test(f) && !/example/i.test(f));
+    if (names.length) return path.join(DIR, names.sort((a, b) => a.length - b.length)[0]);
+  } catch {}
+  return null;
+}
+const FILE = path.join(DIR, 'email-routes.txt');
 
 // Ignore case, leading/trailing/double spaces, hidden BOM, and fancy dashes.
 const norm = s => String(s || '').replace(/^\uFEFF/, '').replace(/[\u2010-\u2015\u2212]/g, '-').replace(/\s+/g, ' ').trim().toLowerCase();
 
 function load() {
   const rules = [];
-  if (!fs.existsSync(FILE)) return rules;
-  for (const raw of fs.readFileSync(FILE, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/)) {
+  const file = findFile();
+  rules.file = file;
+  if (!file) return rules;
+  for (const raw of fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
     const eq = line.indexOf('=');
@@ -36,7 +47,7 @@ function recipientsFor(ctx, defaults) {
   const rules = load();
   const g = norm(ctx.group), n = (ctx.sender || '').replace(/\D/g, '');
   const hit = rules.filter(r => (g && r.key === g) || (n && /^\d+$/.test(r.key) && r.key === n));
-  console.log(`[mail] routes: ${rules.length} rule(s) in email-routes.txt; group "${ctx.group || '-'}" ${hit.length ? 'matched ' + hit.map(h => h.key).join(', ') : 'matched none'}`);
+  console.log(`[mail] routes: ${rules.file ? rules.length + ' rule(s) in ' + path.basename(rules.file) : 'no email-routes.txt file found in ' + DIR}; group "${ctx.group || '-'}" ${hit.length ? 'matched ' + hit.map(h => h.key).join(', ') : 'matched none'}`);
   if (!hit.length) return defaults;
   const only = hit.some(r => r.only);
   const set = new Set(only ? [] : defaults);
