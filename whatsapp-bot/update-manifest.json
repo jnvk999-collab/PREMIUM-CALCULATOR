@@ -1,0 +1,5 @@
+[
+  "bot.js", "update.js", "update-manifest.json", "package.json", "README.md", ".env.example",
+  "lib/calculator.js", "lib/intents.js", "lib/organise.js", "lib/pdfMerge.js", "lib/reply.js", "lib/mailer.js",
+  "test/smoke.js", "setup.bat", "setup.sh", "start.bat", "start.sh"
+]
