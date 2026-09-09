@@ -351,6 +351,12 @@ async function onMessage(m) {
 
 // ── policy PDF dispatch ────────────────────────────────────────────────────
 async function offerDispatch(file, meta) {
+  // a PDF the bot itself produced (merged set) is never a policy to dispatch
+  const base = path.basename(file).replace(/_\d+\.pdf$/i, '.pdf');
+  if (register.readAll().some(r => r.file && path.basename(r.file) === base) || /^\d{13}_/.test(path.basename(file))) {
+    console.log(`[dispatch] ${path.basename(file)} is one of our own merged PDFs, ignored`);
+    return;
+  }
   const vehicle = await dispatch.vehicleFromPdf(file);
   if (meta && meta.from) console.log(`[dispatch] mail from ${meta.from}: ${path.basename(file)} -> ${vehicle || 'no vehicle number'}`);
   const prop = dispatch.propose(file, vehicle);

@@ -65,6 +65,9 @@ function start(onPdf, log = console.log) {
           const from = ((msg.envelope.from || [])[0] || {}).address || '';
           const subject = msg.envelope.subject || '';
           const hasPdf = JSON.stringify(msg.bodyStructure || {}).toLowerCase().includes('pdf');
+          // never react to the bot's own mails (merged PDFs it emailed) or to mails from the sending account
+          const own = [c.user, process.env.EMAIL_FROM || ''].map(x => x.toLowerCase()).filter(Boolean);
+          if (own.includes(from.toLowerCase()) || /^WhatsApp Bot/i.test(((msg.envelope.from || [])[0] || {}).name || '')) { done.add(uid); continue; }
           const okFrom = !c.from.length || c.from.some(f => from.toLowerCase().includes(f));
           const okSubj = !c.subject || subject.toLowerCase().includes(c.subject);
           if (!hasPdf || !okFrom || !okSubj) { done.add(uid); continue; }
@@ -74,7 +77,7 @@ function start(onPdf, log = console.log) {
           const pdfs = (parsed.attachments || []).filter(a => /pdf/i.test(a.contentType) || /\.pdf$/i.test(a.filename || ''));
           for (const a of pdfs) {
             const name = (a.filename || `mail-${uid}.pdf`).replace(/[^\w\-. ]+/g, '_');
-            const file = path.join(outDir, `${Date.now()}_${name}`);
+            const file = path.join(outDir, name.replace(/\.pdf$/i, '') + `_${uid}.pdf`);
             fs.writeFileSync(file, a.content);
             log(`[mail-watch] PDF "${name}" from ${from} (${subject})`);
             try { await onPdf(file, { from, subject }); } catch (e) { log('[mail-watch] dispatch failed: ' + e.message); }
