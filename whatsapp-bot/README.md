@@ -102,6 +102,12 @@ Settings (`.env`):
 | `ignore-list.txt` | Group names and numbers to ignore completely; see `ignore-list.example.txt`. Edits apply without restart | none |
 | `email-routes.txt` | Extra (or only) email addresses per group or sender; see `email-routes.example.txt`. Edits apply without restart | none |
 
+## Register and commands
+
+Every merged set adds a row to `merged/register.jsonl` and rebuilds `merged/register/Intake_<YYYY-MM>.xlsx` (date, time, vehicle, sender, number, group, photos, PDFs, pages, file, emailed to, folder link). Open the Excel any time; if it is open while a set arrives, it is rewritten with the next one.
+
+In your own WhatsApp chat ("message yourself") you can type: `help`, `today`, `yesterday`, `count`, `find 8670`, `send 8670`, `resend 8670 to name@gmail.com`.
+
 ## Which WhatsApp connection to use
 
 **This bot uses Baileys**, an actively maintained open-source library that speaks WhatsApp's own protocol from your number, the same way WhatsApp Web does. It was chosen after whatsapp-web.js (browser automation) stopped being able to download photos on current WhatsApp Web builds.

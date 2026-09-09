@@ -12,6 +12,7 @@
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
     "nodemailer": "^10.0.1",
     "pdf-lib": "^1.17.1",
     "pino": "^10.3.1",

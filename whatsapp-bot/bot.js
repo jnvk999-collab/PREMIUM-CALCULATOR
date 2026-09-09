@@ -36,6 +36,8 @@ const org = require('./lib/organise');
 const mailer = require('./lib/mailer');
 const routes = require('./lib/routes');
 const ignore = require('./lib/ignore');
+const register = require('./lib/register');
+const commands = require('./lib/commands');
 const vehicle = require('./lib/vehicle');
 
 const CFG = {
@@ -192,6 +194,11 @@ const batcher = new PhotoBatcher({
       if (CFG.pdfTo === 'me' || CFG.pdfTo === 'both') await sendPdf(myJid, out, caption);
       if (CFG.pdfTo === 'sender' || CFG.pdfTo === 'both') await sendPdf(chatId, out, `Merged into one PDF (${pages} page${pages === 1 ? '' : 's'}).`);
       console.log(`[pdf] ${label}: ${pages} pages${vehLabel ? ', vehicle ' + vehLabel : ', no vehicle number found'} -> ${archived}`);
+      const emailed = [];
+      const regRow = {
+        date, time: stamp.toTimeString().slice(0, 5), vehicle: vehLabel || '', sender: first.name || '', number: number(first.sender),
+        group: first.group || '', photos, pdfs, pages, file: archived, emailed, processedAt: new Date().toISOString(),
+      };
       if (mailer.enabled()) {
         try {
           const to = routes.recipientsFor({ group: first.group, sender: number(first.sender) }, mailer.defaultTo());
@@ -201,11 +208,13 @@ const batcher = new PhotoBatcher({
             text: caption + '\n\n' + items.map((it, i) => `${i + 1}. ${it.kind} ${it.name}${it.caption ? ' - ' + it.caption : ''}`).join('\n'),
           });
           console.log(`[mail] sent ${path.basename(out)} to ${to.join(', ')}`);
+          emailed.push(...to);
         } catch (e) {
           console.error('[mail] failed: ' + e.message);
           await notifyOwner(`PDF was sent here but the email failed: ${e.message}`);
         }
       }
+      await register.add(regRow);
     } catch (e) {
       console.error('[pdf] merge failed: ' + e.message);
       await notifyOwner(`Could not merge files from ${label}. They are saved in the inbox folder.`);
@@ -240,6 +249,22 @@ async function handleQuote(m, text, label) {
 async function onMessage(m) {
   if (!m.message) return;
   if (m.key.id && seenSet.has(m.key.id)) return;          // already handled before a restart/reconnect
+  // Commands typed by you in your own chat ("message yourself")
+  if (m.key.fromMe && myJid && m.key.remoteJid === myJid && !mediaOf(m) && !sentByBot.has(m.key.id)) {
+    const t = textOf(m);
+    if (t) {
+      markSeen(m.key.id);
+      try {
+        const res = await commands.handle(t, { mailer });
+        if (res) {
+          if (res.text) await sendText(myJid, res.text);
+          for (const f of res.files || []) await sendPdf(myJid, f, path.basename(f));
+          console.log(`[cmd] ${t}`);
+        }
+      } catch (e) { await sendText(myJid, 'Command failed: ' + e.message); }
+      return;
+    }
+  }
   if (!(await allowed(m))) return;
   const jid = m.key.remoteJid;
   const label = await contactLabel(m);
