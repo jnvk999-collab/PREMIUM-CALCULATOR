@@ -21,10 +21,13 @@ let seq = 0;
 async function vehicleFromPdf(file) {
   let text = '';
   try {
-    const pdfParse = require('pdf-parse');
-    const data = await pdfParse(fs.readFileSync(file), { max: 3 });
-    text = data.text || '';
-  } catch (e) { /* scanned or odd PDF */ }
+    const pdfjs = require('pdfjs-dist/legacy/build/pdf.mjs');
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(fs.readFileSync(file)), useSystemFonts: true, disableFontFace: true, verbosity: 0 }).promise;
+    for (let i = 1; i <= Math.min(doc.numPages, 3); i++) {
+      const content = await (await doc.getPage(i)).getTextContent();
+      text += content.items.map(it => it.str).join(' ') + '\n';
+    }
+  } catch (e) { console.error('[dispatch] could not read text from ' + path.basename(file) + ': ' + e.message); }
   const found = extractNumbers(text + ' ' + path.basename(file).replace(/[_\-.]/g, ' '));
   let best = null, n = 0;
   for (const [k, v] of found) if (v > n) { best = k; n = v; }
@@ -36,7 +39,7 @@ function propose(file, vehicle, opts = {}) {
   const rows = vehicle ? register.search(vehicle) : [];
   if (!vehicle) return { text: `📄 ${path.basename(file)}: no vehicle number readable. Reply *to 8670* (last digits) to pick the vehicle, or *no* to ignore.`, token: park(file, null, null, []) };
   if (!rows.length) return { text: `📄 ${path.basename(file)}: vehicle ${pretty(vehicle)} not in the register. Reply *to 8670* to pick another vehicle, or *no*.`, token: park(file, vehicle, null, []) };
-  const row = rows[0];
+  const row = rows.find(r => r.chat) || rows[0];   // prefer an entry that knows where it came from
   const options = [];
   if (row.chat && row.chat.endsWith('@g.us')) {
     if (row.senderJid) options.push({ label: `${row.sender || row.number} privately`, jid: row.senderJid });
