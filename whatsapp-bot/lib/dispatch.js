@@ -37,8 +37,8 @@ async function vehicleFromPdf(file) {
 /** Build the proposal for one PDF. Returns { text, token } or { text } when nothing to do. */
 function propose(file, vehicle, opts = {}) {
   const rows = vehicle ? register.search(vehicle) : [];
-  if (!vehicle) return { text: `📄 ${path.basename(file)}: no vehicle number readable. Reply *to 8670* (last digits) to pick the vehicle, or *no* to ignore.`, token: park(file, null, null, []) };
-  if (!rows.length) return { text: `📄 ${path.basename(file)}: vehicle ${pretty(vehicle)} not in the register. Reply *to 8670* to pick another vehicle, or *no*.`, token: park(file, vehicle, null, []) };
+  if (!vehicle) return { text: `📄 ${path.basename(file)}: no vehicle number readable. Reply *to 8670* (vehicle last digits), *to 9876543210* (phone number) or *to <group name>*, or *no*.`, token: park(file, null, null, []) };
+  if (!rows.length) return { text: `📄 ${path.basename(file)}: ${pretty(vehicle)} is not in the register yet. Reply *to 9876543210* (phone number) or *to <group name>* to send it, or *no*.`, token: park(file, vehicle, null, []) };
   const row = rows.find(r => r.chat) || rows[0];   // prefer an entry that knows where it came from
   const options = [];
   if (row.chat && row.chat.endsWith('@g.us')) {
@@ -70,7 +70,7 @@ const pretty = r => r ? r.replace(/^([A-Z]{2}\d{2})([A-Z]{1,3})(\d{4})$/, '$1 $2
 /**
  * Handle a reply typed in the owner's chat. Returns {text, send?:{jid,file,caption}} or null if not a dispatch reply.
  */
-function reply(text) {
+function reply(text, { resolveGroup } = {}) {
   const t = String(text || '').trim().toLowerCase();
   const p = latest();
   if (!p) return null;
@@ -83,8 +83,23 @@ function reply(text) {
   }
   const to = t.match(/^to\s+(.+)$/);
   if (to) {
-    const rows = register.search(to[1]);
-    if (!rows.length) return { text: `No set found for "${to[1]}".` };
+    const target = to[1].trim();
+    const cap = p.vehicle ? `${pretty(p.vehicle)} - ${path.basename(p.file)}` : path.basename(p.file);
+    // a phone number -> send directly
+    const digits = target.replace(/[\s\-+()]/g, '');
+    if (/^\d{10,15}$/.test(digits)) {
+      const jid = (digits.length === 10 ? '91' + digits : digits) + '@s.whatsapp.net';
+      clearLatest();
+      return { text: `Sending ${path.basename(p.file)} to ${digits}...`, send: { jid, file: p.file, caption: cap } };
+    }
+    // a group name -> send to that group
+    const gjid = resolveGroup ? resolveGroup(target) : null;
+    if (gjid) {
+      clearLatest();
+      return { text: `Sending ${path.basename(p.file)} to group "${target}"...`, send: { jid: gjid, file: p.file, caption: cap } };
+    }
+    const rows = register.search(target);
+    if (!rows.length) return { text: `No set, number or group found for "${target}". Try *to 9876543210* (phone number) or *to <group name>*.` };
     const prop = propose(p.file, rows[0].vehicle ? rows[0].vehicle.replace(/\s+/g, '') : to[1].toUpperCase());
     clearLatest(); pending.set(prop.token, pending.get(prop.token));
     return { text: prop.text };

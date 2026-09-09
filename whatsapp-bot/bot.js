@@ -275,7 +275,12 @@ async function onMessage(m) {
     if (t) {
       markSeen(m.key.id);
       try {
-        const d = dispatch.reply(t);
+        const d = dispatch.reply(t, { resolveGroup: (name) => {
+          const n = name.replace(/\s+/g, ' ').trim().toLowerCase();
+          for (const [jid, subject] of groupNames) if ((subject || '').replace(/\s+/g, ' ').trim().toLowerCase() === n) return jid;
+          for (const [jid, subject] of groupNames) if ((subject || '').toLowerCase().includes(n)) return jid;
+          return null;
+        } });
         if (d) {
           if (d.text) await sendText(myJid, d.text);
           if (d.send) {
