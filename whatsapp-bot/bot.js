@@ -38,6 +38,7 @@ const routes = require('./lib/routes');
 const ignore = require('./lib/ignore');
 const register = require('./lib/register');
 const commands = require('./lib/commands');
+const dispatch = require('./lib/dispatch');
 const vehicle = require('./lib/vehicle');
 
 const CFG = {
@@ -51,6 +52,9 @@ const CFG = {
   pdfTo: (process.env.PDF_TO || 'me').toLowerCase(),
   // Read the vehicle number from the photos (local OCR, free) and use it in the file name.
   ocrVehicle: process.env.OCR_VEHICLE !== '0',
+  // Send policy PDFs back to the requester: watch these folders for new PDFs.
+  watchDownloads: process.env.WATCH_DOWNLOADS === '1',
+  dispatchAuto: process.env.DISPATCH_AUTO === '1',
   // Only make a PDF when a set has at least this many photos (vehicle inspection sets).
   // Single greeting images / forwards are filed in the inbox but produce nothing.
   minPhotos: parseInt(process.env.MIN_PHOTOS || '3', 10),
@@ -198,6 +202,7 @@ const batcher = new PhotoBatcher({
       const regRow = {
         date, time: stamp.toTimeString().slice(0, 5), vehicle: vehLabel || '', sender: first.name || '', number: number(first.sender),
         group: first.group || '', photos, pdfs, pages, file: archived, emailed, processedAt: new Date().toISOString(),
+        chat: chatId, senderJid: first.sender || '',
       };
       if (mailer.enabled()) {
         try {
@@ -249,12 +254,38 @@ async function handleQuote(m, text, label) {
 async function onMessage(m) {
   if (!m.message) return;
   if (m.key.id && seenSet.has(m.key.id)) return;          // already handled before a restart/reconnect
+  // A PDF you forward into your own chat from the phone -> offer to send it to the requester
+  if (m.key.fromMe && myJid && m.key.remoteJid === myJid && !sentByBot.has(m.key.id)) {
+    const med = mediaOf(m);
+    if (med && med.mimetype === 'application/pdf') {
+      markSeen(m.key.id);
+      try {
+        const buf = await downloadMediaMessage(m, 'buffer', {}, { logger, reuploadRequest: sock.updateMediaMessage });
+        const dir = path.join(__dirname, 'outbox'); fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, (med.name || `from-phone-${Date.now()}.pdf`).replace(/[^\w\-. ]+/g, '_'));
+        fs.writeFileSync(file, buf);
+        await offerDispatch(file);
+      } catch (e) { await sendText(myJid, 'Could not read that PDF: ' + e.message); }
+      return;
+    }
+  }
   // Commands typed by you in your own chat ("message yourself")
   if (m.key.fromMe && myJid && m.key.remoteJid === myJid && !mediaOf(m) && !sentByBot.has(m.key.id)) {
     const t = textOf(m);
     if (t) {
       markSeen(m.key.id);
       try {
+        const d = dispatch.reply(t);
+        if (d) {
+          if (d.text) await sendText(myJid, d.text);
+          if (d.send) {
+            await sendPdf(d.send.jid, d.send.file, d.send.caption);
+            await sendText(myJid, `✅ Sent ${path.basename(d.send.file)}.`);
+            org.log({ type: 'dispatched', file: path.basename(d.send.file), to: d.send.jid });
+            console.log(`[dispatch] sent ${path.basename(d.send.file)} to ${d.send.jid}`);
+          }
+          return;
+        }
         const res = await commands.handle(t, { mailer });
         if (res) {
           if (res.text) await sendText(myJid, res.text);
@@ -310,6 +341,40 @@ async function onMessage(m) {
   } catch (e) {
     console.error(`[handler] ${label}: ${e.message}`);
   }
+}
+
+// ── policy PDF dispatch ────────────────────────────────────────────────────
+async function offerDispatch(file) {
+  const vehicle = await dispatch.vehicleFromPdf(file);
+  const prop = dispatch.propose(file, vehicle);
+  const p = dispatch.pending.get(prop.token);
+  if (CFG.dispatchAuto && p && p.options.length) {
+    const o = p.options[0];
+    dispatch.pending.delete(prop.token);
+    await sendPdf(o.jid, file, `${dispatch.pretty(vehicle)} - ${path.basename(file)}`);
+    await sendText(myJid, `✅ Auto-sent ${path.basename(file)} (${dispatch.pretty(vehicle)}) to ${o.label}.`);
+    console.log(`[dispatch] auto-sent ${path.basename(file)} to ${o.jid}`);
+    return;
+  }
+  if (!vehicle && !CFG.dispatchAuto && !/outbox/.test(file) && CFG.watchDownloads) {
+    // an unrelated download: stay quiet
+    console.log(`[dispatch] ${path.basename(file)}: no vehicle number, ignored`);
+    dispatch.pending.delete(prop.token);
+    return;
+  }
+  await sendText(myJid, prop.text);
+  console.log(`[dispatch] proposed ${path.basename(file)} (${vehicle || 'no vehicle'})`);
+}
+
+function startDispatchWatch() {
+  const folders = [path.join(__dirname, 'outbox')];
+  fs.mkdirSync(folders[0], { recursive: true });
+  if (CFG.watchDownloads) {
+    const dl = process.env.DOWNLOADS_DIR || path.join(require('os').homedir(), 'Downloads');
+    if (fs.existsSync(dl)) folders.push(dl);
+  }
+  dispatch.watch(folders, async (file) => { if (myJid) await offerDispatch(file); });
+  console.log('[dispatch] watching for policy PDFs in: ' + folders.join(' ; '));
 }
 
 // ── tiny private web page (for cloud servers with no screen) ───────────────
@@ -370,6 +435,7 @@ async function start() {
       try { fs.unlinkSync(QR_PNG); } catch {}
       myJid = jidNormalizedUser(sock.user.id);
       if (CFG.ocrVehicle) vehicle.warmUp();
+      if (!global.__dispatchStarted) { global.__dispatchStarted = true; startDispatchWatch(); }
       if (mailer.enabled()) mailer.verify().then(() => console.log('[mail] email login OK, PDFs will also be emailed to ' + process.env.EMAIL_TO)).catch(e => console.error('[mail] email login FAILED: ' + e.message));
       console.log(`Ready as ${number(myJid)}. Inbox: ${org.ROOT}  Merged PDFs: ${org.MERGED_ROOT}  min photos: ${CFG.minPhotos}  merge wait: ${CFG.mergeWaitSeconds}s  PDF to: ${CFG.pdfTo}  groups: ${CFG.replyInGroups ? (CFG.allowGroups.join(', ') || 'all') : 'off'}`);
       if (CFG.replyInGroups) {

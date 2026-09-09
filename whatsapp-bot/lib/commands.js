@@ -18,6 +18,7 @@ const HELP = [
   '• *send 8670* – send that PDF here',
   '• *resend 8670 to name@gmail.com* – email that PDF',
   '• *count* – this month by group',
+  '• forward a policy PDF here (or drop it in Downloads) – I offer to send it to whoever sent that vehicle',
   '• *help* – this list',
 ].join('\n');
 

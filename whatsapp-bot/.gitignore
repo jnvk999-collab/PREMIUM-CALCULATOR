@@ -13,3 +13,4 @@ email-routes.txt
 ignore-list.txt
 groups.txt
 allowed-groups.txt
+outbox/

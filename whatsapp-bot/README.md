@@ -108,6 +108,10 @@ Every merged set adds a row to `merged/register.jsonl` and rebuilds `merged/regi
 
 In your own WhatsApp chat ("message yourself") you can type: `help`, `today`, `yesterday`, `count`, `find 8670`, `send 8670`, `resend 8670 to name@gmail.com`.
 
+## Sending policy PDFs back
+
+Drop a policy PDF into `outbox/` (or into your Downloads folder with `WATCH_DOWNLOADS=1`), or forward it from your phone into your own WhatsApp chat. The bot reads the vehicle number from the PDF, finds who sent that vehicle's photos, and asks in your chat: reply `1` (private sender) or `2` (the group), or `no`. `DISPATCH_AUTO=1` sends to the private sender without asking. PDFs with no known vehicle are ignored.
+
 ## Which WhatsApp connection to use
 
 **This bot uses Baileys**, an actively maintained open-source library that speaks WhatsApp's own protocol from your number, the same way WhatsApp Web does. It was chosen after whatsapp-web.js (browser automation) stopped being able to download photos on current WhatsApp Web builds.
