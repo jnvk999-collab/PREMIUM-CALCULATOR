@@ -112,6 +112,8 @@ In your own WhatsApp chat ("message yourself") you can type: `help`, `today`, `y
 
 Drop a policy PDF into `outbox/` (or into your Downloads folder with `WATCH_DOWNLOADS=1`), or forward it from your phone into your own WhatsApp chat. The bot reads the vehicle number from the PDF, finds who sent that vehicle's photos, and asks in your chat: reply `1` (private sender) or `2` (the group), or `no`. `DISPATCH_AUTO=1` sends to the private sender without asking. PDFs with no known vehicle are ignored.
 
+With `MAIL_WATCH=1` the bot also polls your Gmail inbox (IMAP, same App Password) for new mails with PDF attachments, optionally filtered by `MAIL_WATCH_FROM` / `MAIL_WATCH_SUBJECT`, and dispatches those PDFs the same way.
+
 ## Which WhatsApp connection to use
 
 **This bot uses Baileys**, an actively maintained open-source library that speaks WhatsApp's own protocol from your number, the same way WhatsApp Web does. It was chosen after whatsapp-web.js (browser automation) stopped being able to download photos on current WhatsApp Web builds.

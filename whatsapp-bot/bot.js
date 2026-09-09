@@ -39,6 +39,7 @@ const ignore = require('./lib/ignore');
 const register = require('./lib/register');
 const commands = require('./lib/commands');
 const dispatch = require('./lib/dispatch');
+const mailwatch = require('./lib/mailwatch');
 const vehicle = require('./lib/vehicle');
 
 const CFG = {
@@ -349,8 +350,9 @@ async function onMessage(m) {
 }
 
 // ── policy PDF dispatch ────────────────────────────────────────────────────
-async function offerDispatch(file) {
+async function offerDispatch(file, meta) {
   const vehicle = await dispatch.vehicleFromPdf(file);
+  if (meta && meta.from) console.log(`[dispatch] mail from ${meta.from}: ${path.basename(file)} -> ${vehicle || 'no vehicle number'}`);
   const prop = dispatch.propose(file, vehicle);
   const p = dispatch.pending.get(prop.token);
   if (CFG.dispatchAuto && p && p.options.length) {
@@ -380,6 +382,7 @@ function startDispatchWatch() {
   }
   dispatch.watch(folders, async (file) => { if (myJid) await offerDispatch(file); });
   console.log('[dispatch] watching for policy PDFs in: ' + folders.join(' ; '));
+  mailwatch.start(async (file, meta) => { if (myJid) await offerDispatch(file, meta); }, console.log);
 }
 
 // ── tiny private web page (for cloud servers with no screen) ───────────────

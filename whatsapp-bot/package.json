@@ -13,6 +13,8 @@
     "@whiskeysockets/baileys": "^7.0.0-rc14",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
+    "imapflow": "^2.0.0",
+    "mailparser": "^3.9.23",
     "nodemailer": "^10.0.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
