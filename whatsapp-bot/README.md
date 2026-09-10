@@ -114,6 +114,10 @@ Drop a policy PDF into `outbox/` (or into your Downloads folder with `WATCH_DOWN
 
 With `MAIL_WATCH=1` the bot also polls your Gmail inbox (IMAP, same App Password) for new mails with PDF attachments, optionally filtered by `MAIL_WATCH_FROM` / `MAIL_WATCH_SUBJECT`, and dispatches those PDFs the same way.
 
+## Renewals
+
+Put your renewal sheet in the bot folder as `renewals.xlsx` (columns are found by name: expiry / name / vehicle / policy / mobile). Every day at `RENEWAL_HOUR` the bot sends you the policies expiring within `RENEWAL_DAYS`, with phone numbers; `due` or `due 7` in your own chat shows them any time. `node scan-policies.js 365` pulls last year's policy PDFs from Gmail, reads policy number, insured, vehicle, period and mobile, and writes `merged/register/Policies.xlsx`; those expiries feed the reminders too.
+
 ## Which WhatsApp connection to use
 
 **This bot uses Baileys**, an actively maintained open-source library that speaks WhatsApp's own protocol from your number, the same way WhatsApp Web does. It was chosen after whatsapp-web.js (browser automation) stopped being able to download photos on current WhatsApp Web builds.

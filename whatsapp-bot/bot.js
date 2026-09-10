@@ -40,6 +40,7 @@ const register = require('./lib/register');
 const commands = require('./lib/commands');
 const dispatch = require('./lib/dispatch');
 const mailwatch = require('./lib/mailwatch');
+const renewals = require('./lib/renewals');
 const vehicle = require('./lib/vehicle');
 
 const CFG = {
@@ -56,6 +57,9 @@ const CFG = {
   // Send policy PDFs back to the requester: watch these folders for new PDFs.
   watchDownloads: process.env.WATCH_DOWNLOADS === '1',
   dispatchAuto: process.env.DISPATCH_AUTO === '1',
+  // Renewal reminder: every day at RENEWAL_HOUR (24h), policies expiring within RENEWAL_DAYS.
+  renewalDays: parseInt(process.env.RENEWAL_DAYS || '2', 10),
+  renewalHour: parseInt(process.env.RENEWAL_HOUR || '8', 10),
   // Only make a PDF when a set has at least this many photos (vehicle inspection sets).
   // Single greeting images / forwards are filed in the inbox but produce nothing.
   minPhotos: parseInt(process.env.MIN_PHOTOS || '3', 10),
@@ -292,6 +296,14 @@ async function onMessage(m) {
           }
           return;
         }
+        const due = t.match(/^(due|renewals?|expir\w*)\s*(\d+)?$/i);
+        if (due) {
+          const days = due[2] ? parseInt(due[2], 10) : CFG.renewalDays;
+          const r = await renewals.due(days, { includePast: 3 });
+          await sendText(myJid, renewals.format(r.list, days) + (r.file ? '' : '\n\n(No renewals.xlsx found in the bot folder; showing scanned policies only.)'));
+          console.log(`[renewals] ${t}: ${r.list.length} due`);
+          return;
+        }
         const res = await commands.handle(t, { mailer });
         if (res) {
           if (res.text) await sendText(myJid, res.text);
@@ -390,6 +402,22 @@ function startDispatchWatch() {
   console.log('[dispatch] watching for policy PDFs in: ' + folders.join(' ; '));
   mailwatch.start(async (file, meta) => { if (myJid) await offerDispatch(file, meta); }, console.log);
 }
+
+// ── daily renewal reminder ────────────────────────────────────────────────
+let lastRenewalDay = '';
+setInterval(async () => {
+  if (!myJid) return;
+  const now = new Date();
+  const day = renewals.today(now);
+  if (now.getHours() < CFG.renewalHour || lastRenewalDay === day) return;
+  lastRenewalDay = day;
+  try {
+    const r = await renewals.due(CFG.renewalDays, { includePast: 3 });
+    if (!r.file && !r.total) return;                       // nothing to base reminders on
+    await sendText(myJid, renewals.format(r.list, CFG.renewalDays));
+    console.log(`[renewals] daily reminder sent: ${r.list.length} due (from ${r.file ? path.basename(r.file) : 'scanned policies'})`);
+  } catch (e) { console.error('[renewals] ' + e.message); }
+}, 60 * 1000);
 
 // ── tiny private web page (for cloud servers with no screen) ───────────────
 // STATUS_PORT + STATUS_TOKEN in .env  ->  http://<server-ip>:<port>/<token>/
