@@ -270,7 +270,7 @@ async function onMessage(m) {
         const dir = path.join(__dirname, 'outbox'); fs.mkdirSync(dir, { recursive: true });
         const file = path.join(dir, (med.name || `from-phone-${Date.now()}.pdf`).replace(/[^\w\-. ]+/g, '_'));
         fs.writeFileSync(file, buf);
-        await offerDispatch(file);
+        await offerDispatch(file, { source: 'chat' });
       } catch (e) { await sendText(myJid, 'Could not read that PDF: ' + e.message); }
       return;
     }
@@ -363,32 +363,34 @@ async function onMessage(m) {
 }
 
 // ── policy PDF dispatch ────────────────────────────────────────────────────
-async function offerDispatch(file, meta) {
+async function offerDispatch(file, meta = {}) {
   // a PDF the bot itself produced (merged set) is never a policy to dispatch
   const base = path.basename(file).replace(/_\d+\.pdf$/i, '.pdf');
   if (register.readAll().some(r => r.file && path.basename(r.file) === base) || /^\d{13}_/.test(path.basename(file))) {
     console.log(`[dispatch] ${path.basename(file)} is one of our own merged PDFs, ignored`);
     return;
   }
-  const vehicle = await dispatch.vehicleFromPdf(file);
-  if (meta && meta.from) console.log(`[dispatch] mail from ${meta.from}: ${path.basename(file)} -> ${vehicle || 'no vehicle number'}`);
+  const ins = await dispatch.inspect(file);
+  const vehicle = ins.vehicle;
+  const auto = meta.source === 'downloads' || meta.source === 'mail';
+  if (meta.from) console.log(`[dispatch] mail from ${meta.from}: ${path.basename(file)} -> ${vehicle || 'no vehicle number'}${ins.isPolicy ? ' (policy)' : ' (not a policy)'}`);
+  // From Downloads or Gmail: only genuine policy documents. Forwarded by you: always.
+  if (auto && !ins.isPolicy) {
+    console.log(`[dispatch] ${path.basename(file)}: ${ins.looksLikeQuote ? 'a quote' : 'not a policy document'}, ignored`);
+    return;
+  }
   const prop = dispatch.propose(file, vehicle);
   const p = dispatch.pending.get(prop.token);
   if (CFG.dispatchAuto && p && p.options.length) {
     const o = p.options[0];
     dispatch.pending.delete(prop.token);
     await sendPdf(o.jid, file, `${dispatch.pretty(vehicle)} - ${path.basename(file)}`);
-    await sendText(myJid, `✅ Auto-sent ${path.basename(file)} (${dispatch.pretty(vehicle)}) to ${o.label}.`);
+    await sendText(myJid, `✅ Auto-sent ${path.basename(file)} (${dispatch.pretty(vehicle)}${ins.info.insured ? ', ' + ins.info.insured : ''}) to ${o.label}.`);
     console.log(`[dispatch] auto-sent ${path.basename(file)} to ${o.jid}`);
     return;
   }
-  if (!vehicle && !CFG.dispatchAuto && !/outbox/.test(file) && CFG.watchDownloads) {
-    // an unrelated download: stay quiet
-    console.log(`[dispatch] ${path.basename(file)}: no vehicle number, ignored`);
-    dispatch.pending.delete(prop.token);
-    return;
-  }
-  await sendText(myJid, prop.text);
+  // ask, with the PDF attached so you can see it and forward it by hand if you prefer
+  await sendPdf(myJid, file, prop.text);
   console.log(`[dispatch] proposed ${path.basename(file)} (${vehicle || 'no vehicle'})`);
 }
 
@@ -399,9 +401,9 @@ function startDispatchWatch() {
     const dl = process.env.DOWNLOADS_DIR || path.join(require('os').homedir(), 'Downloads');
     if (fs.existsSync(dl)) folders.push(dl);
   }
-  dispatch.watch(folders, async (file) => { if (myJid) await offerDispatch(file); });
+  dispatch.watch(folders, async (file) => { if (myJid) await offerDispatch(file, { source: /outbox/i.test(file) ? 'outbox' : 'downloads' }); });
   console.log('[dispatch] watching for policy PDFs in: ' + folders.join(' ; '));
-  mailwatch.start(async (file, meta) => { if (myJid) await offerDispatch(file, meta); }, console.log);
+  mailwatch.start(async (file, meta) => { if (myJid) await offerDispatch(file, { ...meta, source: 'mail' }); }, console.log);
 }
 
 // ── automatic renewal reminders (7 days before, 2 days before, on the day; each once) ──

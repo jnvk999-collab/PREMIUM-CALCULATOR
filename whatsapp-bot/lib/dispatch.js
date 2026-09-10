@@ -14,9 +14,23 @@ const fs = require('fs');
 const path = require('path');
 const register = require('./register');
 const { extractNumbers } = require('./vehicle');
+const policy = require('./policy');
 
 const pending = new Map();      // token -> { file, vehicle, row, options:[{label,jid}], createdAt }
 let seq = 0;
+
+/** Is this PDF an actual policy document (not a quote / RC / anything else)? */
+async function inspect(file) {
+  let text = '';
+  try { text = await policy.textOf(file, 3); } catch {}
+  const info = policy.parse(text);
+  const name = path.basename(file);
+  const looksLikeQuote = /quote|quotation|proposal form|premium calc/i.test(name) || /\bQUOTATION\b|\bQuote\b.*\bIndicative\b|Indicative quote/i.test(text);
+  const isPolicy = !!(info.policyNo && (info.to || /period of insurance|policy period|certificate of insurance|policy schedule/i.test(text))) && !looksLikeQuote;
+  const found = extractNumbers(text + ' ' + name.replace(/[_\-.]/g, ' '));
+  let best = null, n = 0; for (const [k, v] of found) if (v > n) { best = k; n = v; }
+  return { vehicle: best, isPolicy, info, looksLikeQuote };
+}
 
 async function vehicleFromPdf(file) {
   let text = '';
@@ -133,4 +147,4 @@ function watch(folders, onNew, intervalMs = 5000) {
   scan();
 }
 
-module.exports = { vehicleFromPdf, propose, reply, watch, pending, pretty };
+module.exports = { vehicleFromPdf, inspect, propose, reply, watch, pending, pretty };
