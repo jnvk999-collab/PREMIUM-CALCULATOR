@@ -116,7 +116,7 @@ With `MAIL_WATCH=1` the bot also polls your Gmail inbox (IMAP, same App Password
 
 ## Renewals
 
-Put your renewal sheet in the bot folder as `renewals.xlsx` (columns are found by name: expiry / name / vehicle / policy / mobile). Every day at `RENEWAL_HOUR` the bot sends you the policies expiring within `RENEWAL_DAYS`, with phone numbers; `due` or `due 7` in your own chat shows them any time. `node scan-policies.js 365` pulls last year's policy PDFs from Gmail, reads policy number, insured, vehicle, period and mobile, and writes `merged/register/Policies.xlsx`; those expiries feed the reminders too.
+Put your renewal sheet in the bot folder as `renewals.xlsx` (columns are found by name: expiry / name / vehicle / policy / mobile). Every day at `RENEWAL_HOUR` the bot sends you, once per policy per milestone, the policies reaching `RENEWAL_MILESTONES` (default 7 days before, 2 days before, and on the day), with phone numbers; `due` or `due 7` in your own chat shows the upcoming list any time. `node scan-policies.js 365` pulls last year's policy PDFs from Gmail, reads policy number, insured, vehicle, period and mobile, and writes `merged/register/Policies.xlsx`; those expiries feed the reminders too.
 
 ## Which WhatsApp connection to use
 

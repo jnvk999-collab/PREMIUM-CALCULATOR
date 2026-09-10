@@ -138,4 +138,59 @@ function format(list, days) {
   return lines.join('\n');
 }
 
-module.exports = { due, format, loadExcel, loadScanned, findFile, today };
+
+/**
+ * Milestone reminders: each policy gets one message at each milestone
+ * (default 7 and 2 days before expiry, and on the expiry day), never twice.
+ * If the bot was off on the exact day, the reminder goes out on the next run.
+ */
+const SENT_FILE = () => path.join(org.MERGED_ROOT, 'renewal-reminders.json');
+function loadSent() { try { return JSON.parse(fs.readFileSync(SENT_FILE(), 'utf8')); } catch { return {}; } }
+function saveSent(o) { try { fs.mkdirSync(org.MERGED_ROOT, { recursive: true }); fs.writeFileSync(SENT_FILE(), JSON.stringify(o)); } catch {} }
+
+async function milestoneReminders(milestones = [7, 2, 0]) {
+  const { rows, file } = await loadExcel();
+  const scanned = loadScanned();
+  const byPolicy = new Map(scanned.map(p => [p.policy.replace(/\s+/g, ''), p]));
+  for (const r of rows) { const p = byPolicy.get((r.policy || '').replace(/\s+/g, '')); if (p) { r.phone = r.phone || p.phone; r.vehicle = r.vehicle || p.vehicle; r.name = r.name || p.name; r.file = p.file; } }
+  const all = [...rows, ...scanned];
+  const sent = loadSent();
+  const t = today();
+  const out = [];   // { milestone, list }
+  const seen = new Set();
+  for (const m of [...milestones].sort((a, b) => b - a)) {
+    const list = [];
+    for (const r of all) {
+      const key = ((r.policy || '') + '|' + (r.vehicle || '') + '|' + r.expiry).toUpperCase();
+      if (seen.has(key + '|' + m)) continue;
+      const daysLeft = Math.round((new Date(r.expiry + 'T00:00:00') - new Date(t + 'T00:00:00')) / 86400000);
+      if (daysLeft < 0 || daysLeft > m) continue;                  // not yet at this milestone, or already expired
+      const tag = key + '|' + m;
+      if (sent[tag]) continue;
+      // a bigger milestone already covered it today? (e.g. 7-day and 2-day both due on the same run) -> send only the nearest
+      const nearer = milestones.filter(x => x < m && daysLeft <= x);
+      if (nearer.length) { sent[tag] = t; continue; }
+      seen.add(tag);
+      list.push({ ...r, daysLeft });
+      sent[tag] = t;
+    }
+    if (list.length) out.push({ milestone: m, list });
+  }
+  saveSent(sent);
+  return { batches: out, file, total: all.length };
+}
+
+function formatMilestone(m, list) {
+  const head = m === 0 ? '🚨 *Expiring TODAY*' : m <= 2 ? `🚨 *Expiring within ${m} days*` : `⏰ *Renewal reminder: ${m} days*`;
+  const lines = [`${head} (${list.length})`];
+  for (const r of list) {
+    const when = r.daysLeft === 0 ? 'expires TODAY' : r.daysLeft === 1 ? 'expires tomorrow' : `expires in ${r.daysLeft} days`;
+    lines.push(`• *${r.name || pretty(r.vehicle) || r.policy}* – ${when} (${r.expiry.split('-').reverse().join('/')})` +
+      (r.vehicle || r.policy ? `\n   ${r.vehicle ? '🚗 ' + pretty(r.vehicle) + '  ' : ''}${r.policy ? '📄 ' + r.policy : ''}` : '') +
+      (r.type || r.premium || r.agent ? `\n   ${[r.type, r.premium ? '₹' + Number(r.premium).toLocaleString('en-IN') : '', r.agent ? 'agent ' + r.agent : ''].filter(Boolean).join(' · ')}` : '') +
+      (r.phone ? `\n   📞 ${r.phone}  wa.me/91${r.phone.slice(-10)}` : '\n   📞 no number in sheet'));
+  }
+  return lines.join('\n');
+}
+
+module.exports = { due, format, loadExcel, loadScanned, findFile, today, milestoneReminders, formatMilestone };

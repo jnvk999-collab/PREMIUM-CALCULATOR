@@ -59,6 +59,7 @@ const CFG = {
   dispatchAuto: process.env.DISPATCH_AUTO === '1',
   // Renewal reminder: every day at RENEWAL_HOUR (24h), policies expiring within RENEWAL_DAYS.
   renewalDays: parseInt(process.env.RENEWAL_DAYS || '2', 10),
+  renewalMilestones: (process.env.RENEWAL_MILESTONES || '7,2,0').split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)),
   renewalHour: parseInt(process.env.RENEWAL_HOUR || '8', 10),
   // Only make a PDF when a set has at least this many photos (vehicle inspection sets).
   // Single greeting images / forwards are filed in the inbox but produce nothing.
@@ -403,19 +404,21 @@ function startDispatchWatch() {
   mailwatch.start(async (file, meta) => { if (myJid) await offerDispatch(file, meta); }, console.log);
 }
 
-// ── daily renewal reminder ────────────────────────────────────────────────
-let lastRenewalDay = '';
+// ── automatic renewal reminders (7 days before, 2 days before, on the day; each once) ──
+let lastRenewalRun = '';
 setInterval(async () => {
   if (!myJid) return;
   const now = new Date();
   const day = renewals.today(now);
-  if (now.getHours() < CFG.renewalHour || lastRenewalDay === day) return;
-  lastRenewalDay = day;
+  if (now.getHours() < CFG.renewalHour || lastRenewalRun === day) return;
+  lastRenewalRun = day;
   try {
-    const r = await renewals.due(CFG.renewalDays, { includePast: 3 });
-    if (!r.file && !r.total) return;                       // nothing to base reminders on
-    await sendText(myJid, renewals.format(r.list, CFG.renewalDays));
-    console.log(`[renewals] daily reminder sent: ${r.list.length} due (from ${r.file ? path.basename(r.file) : 'scanned policies'})`);
+    const r = await renewals.milestoneReminders(CFG.renewalMilestones);
+    for (const b of r.batches) {
+      await sendText(myJid, renewals.formatMilestone(b.milestone, b.list));
+      console.log(`[renewals] ${b.milestone}-day reminder: ${b.list.length} polic${b.list.length === 1 ? 'y' : 'ies'}`);
+    }
+    if (!r.batches.length) console.log(`[renewals] checked ${r.total} policies, nothing due today`);
   } catch (e) { console.error('[renewals] ' + e.message); }
 }, 60 * 1000);
 
