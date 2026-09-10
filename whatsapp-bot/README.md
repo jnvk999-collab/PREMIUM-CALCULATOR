@@ -114,6 +114,10 @@ Drop a policy PDF into `outbox/` (or into your Downloads folder with `WATCH_DOWN
 
 With `MAIL_WATCH=1` the bot also polls your Gmail inbox (IMAP, same App Password) for new mails with PDF attachments, optionally filtered by `MAIL_WATCH_FROM` / `MAIL_WATCH_SUBJECT`, and dispatches those PDFs the same way.
 
+## Policy copy requests
+
+When someone sends a payment-confirmation screenshot (proposal number + amount), the bot reads it, finds the matching policy among the ones it knows (Gmail scan / mail-watch / Downloads), checks the paid amount against the premium, and sends the policy PDF to that chat. If the policy has not arrived yet, the request is parked and fulfilled automatically when the policy mail comes in. Amount mismatches are reported to you instead of sent.
+
 ## Renewals
 
 Put your renewal sheet in the bot folder as `renewals.xlsx` (columns are found by name: expiry / name / vehicle / policy / mobile). Every day at `RENEWAL_HOUR` the bot sends you, once per policy per milestone, the policies reaching `RENEWAL_MILESTONES` (default 7 days before, 2 days before, and on the day), with phone numbers; `due` or `due 7` in your own chat shows the upcoming list any time. `node scan-policies.js 365` pulls last year's policy PDFs from Gmail, reads policy number, insured, vehicle, period and mobile, and writes `merged/register/Policies.xlsx`; those expiries feed the reminders too.

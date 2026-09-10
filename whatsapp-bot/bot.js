@@ -41,6 +41,8 @@ const commands = require('./lib/commands');
 const dispatch = require('./lib/dispatch');
 const mailwatch = require('./lib/mailwatch');
 const renewals = require('./lib/renewals');
+const requests = require('./lib/requests');
+const policyLib = require('./lib/policy');
 const vehicle = require('./lib/vehicle');
 
 const CFG = {
@@ -338,6 +340,8 @@ async function onMessage(m) {
         const ocr = (CFG.ocrVehicle && /^image\//.test(media.mimetype))
           ? vehicle.readOne(file).catch(e => { console.error('[ocr] ' + e.message); return null; })
           : Promise.resolve(null);
+        // payment screenshot -> policy copy request
+        if (!m.key.fromMe) ocr.then(r => r && r.text && handlePolicyRequest(jid, isGroup ? m.key.participant : jid, label, r.text, text)).catch(e => console.error('[request] ' + e.message));
         const n = await batcher.add(jid, {
           path: file, label, caption: text, receivedAt: sentAt, sentAt, processedAt: new Date(), ocr,
           name: m.key.fromMe ? (CFG.agentName || 'Me') : (m.pushName || ''), sender: m.key.fromMe ? myJid : (isGroup ? m.key.participant : jid),
@@ -362,6 +366,43 @@ async function onMessage(m) {
   }
 }
 
+// ── "please provide policy copy" requests (payment screenshots) ────────────
+async function handlePolicyRequest(chatJid, senderJid, label, ocrText, caption) {
+  const pay = requests.parsePayment(ocrText);
+  if (!pay.isPayment) return;
+  console.log(`[request] ${label}: payment screenshot, proposal ${pay.proposalNo}, amount ₹${pay.amount || '?'}`);
+  const pol = requests.findPolicy(pay.proposalNo);
+  const who = `${label}`;
+  if (!pol) {
+    requests.park({ chat: chatJid, sender: senderJid, label, proposalNo: pay.proposalNo, amount: pay.amount, txnId: pay.txnId, caption });
+    await notifyOwner(`📥 Policy copy requested by ${who}\nProposal ${pay.proposalNo}, paid ₹${pay.amount ? pay.amount.toLocaleString('en-IN') : '?'}\nPolicy not received yet – I will send it to them automatically when it arrives by mail.`);
+    return;
+  }
+  const ok = requests.amountOk(pay.amount, pol.premium);
+  if (ok === false) {
+    await notifyOwner(`⚠️ ${who} paid ₹${pay.amount.toLocaleString('en-IN')} for proposal ${pay.proposalNo}, but the policy premium is ₹${Number(pol.premium).toLocaleString('en-IN')} (${pol.policyNo}). NOT sent. Forward the PDF here and reply *to <number>* if you want it sent anyway.`);
+    return;
+  }
+  await sendPdf(chatJid, pol.file, `Policy ${pol.policyNo}${pol.vehicle ? ' - ' + dispatch.pretty(pol.vehicle) : ''}${pol.insured ? ' - ' + pol.insured : ''}`);
+  await notifyOwner(`✅ Sent policy ${pol.policyNo}${pol.vehicle ? ' (' + dispatch.pretty(pol.vehicle) + ')' : ''} to ${who}. Paid ₹${pay.amount ? pay.amount.toLocaleString('en-IN') : '?'}${pol.premium ? ', premium ₹' + Number(pol.premium).toLocaleString('en-IN') : ''}${ok === null ? ' (amount not checkable)' : ' ✔'}`);
+  org.log({ type: 'policy-sent', to: chatJid, policy: pol.policyNo, proposal: pay.proposalNo, amount: pay.amount });
+  console.log(`[request] sent ${pol.policyNo} to ${label}`);
+}
+
+/** A new policy PDF has arrived (mail / downloads): record it and fulfil parked requests. */
+async function onNewPolicy(file, info, source) {
+  requests.recordPolicy(file, info, { source });
+  const waiting = requests.takeMatching(info);
+  for (const r of waiting) {
+    const ok = requests.amountOk(r.amount, info.premium);
+    if (ok === false) { await notifyOwner(`⚠️ Policy ${info.policyNo} arrived for ${r.label}'s request, but they paid ₹${r.amount} and the premium is ₹${info.premium}. NOT sent.`); continue; }
+    await sendPdf(r.chat, file, `Policy ${info.policyNo}${info.vehicle ? ' - ' + dispatch.pretty(info.vehicle) : ''}${info.insured ? ' - ' + info.insured : ''}`);
+    await notifyOwner(`✅ Policy ${info.policyNo} arrived and was sent to ${r.label} (requested ${r.parkedAt.slice(0, 16).replace('T', ' ')}).`);
+    console.log(`[request] fulfilled parked request for ${r.label}: ${info.policyNo}`);
+  }
+  return waiting.length;
+}
+
 // ── policy PDF dispatch ────────────────────────────────────────────────────
 async function offerDispatch(file, meta = {}) {
   // a PDF the bot itself produced (merged set) is never a policy to dispatch
@@ -374,6 +415,10 @@ async function offerDispatch(file, meta = {}) {
   const vehicle = ins.vehicle;
   const auto = meta.source === 'downloads' || meta.source === 'mail';
   if (meta.from) console.log(`[dispatch] mail from ${meta.from}: ${path.basename(file)} -> ${vehicle || 'no vehicle number'}${ins.isPolicy ? ' (policy)' : ' (not a policy)'}`);
+  if (ins.isPolicy) {
+    const fulfilled = await onNewPolicy(file, { ...ins.info, vehicle: ins.info.vehicle || vehicle }, meta.source || 'chat');
+    if (fulfilled) return;                      // someone was waiting for exactly this policy: done
+  }
   // From Downloads or Gmail: only genuine policy documents. Forwarded by you: always.
   if (auto && !ins.isPolicy) {
     console.log(`[dispatch] ${path.basename(file)}: ${ins.looksLikeQuote ? 'a quote' : 'not a policy document'}, ignored`);

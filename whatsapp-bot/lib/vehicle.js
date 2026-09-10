@@ -125,8 +125,9 @@ async function variants(file) {
  */
 async function readOne(file, opts = {}) {
   const tally = new Map(), partial = new Map();
-  if (!/\.(jpe?g|png)$/i.test(file)) return { tally, partial };
-  try { if (fs.statSync(file).size < 1500) return { tally, partial }; } catch { return { tally, partial }; }
+  let fullText = '';
+  if (!/\.(jpe?g|png)$/i.test(file)) return { tally, partial, text: '' };
+  try { if (fs.statSync(file).size < 1500) return { tally, partial, text: '' }; } catch { return { tally, partial, text: '' }; }
   const started = Date.now();
   const deadline = started + (opts.budgetMs || 60000);
   const worker = await getWorker();
@@ -135,6 +136,7 @@ async function readOne(file, opts = {}) {
     try {
       const { data } = await recognize(worker, img, 40000);
       const text = data.text || '';
+      if (text.length > fullText.length) fullText = text;
       for (const [k, v] of extractNumbers(text)) tally.set(k, (tally.get(k) || 0) + v);
       for (const [k, v] of extractPartials(text)) partial.set(k, (partial.get(k) || 0) + v);
     } catch (e) {
@@ -146,7 +148,7 @@ async function readOne(file, opts = {}) {
   // remove the temp variants we did not get to
   for (const img of imgs) if (img !== file) { try { fs.unlinkSync(img); } catch {} }
   console.log(`[ocr] ${path.basename(file)}: ${tally.size ? 'found ' + [...tally.keys()].join('/') : partial.size ? 'partial ' + [...partial.keys()].slice(0, 3).join('/') : 'nothing'} (${Math.round((Date.now() - started) / 1000)}s)`);
-  return { tally, partial };
+  return { tally, partial, text: fullText };
 }
 
 /** Combine per-photo results into a decision: { number, partial }. */

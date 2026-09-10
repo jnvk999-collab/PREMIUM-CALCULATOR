@@ -61,16 +61,21 @@ const have = new Set(); try { fs.readFileSync(OUT, 'utf8').split('\n').filter(Bo
     }
   } finally { lock.release(); await client.logout(); }
 
+  // re-read older rows that were recorded before proposal numbers were extracted
+  let rows = fs.readFileSync(OUT, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+  let fixed = 0;
+  for (const r of rows) if (!('proposalNo' in r) && r.file && fs.existsSync(r.file)) { const info = await policy.fromPdf(r.file); Object.assign(r, info); r.proposalNo = info.proposalNo || ''; fixed++; }
+  if (fixed) fs.writeFileSync(OUT, rows.map(r => JSON.stringify(r)).join('\n') + '\n');
   // Excel, newest first
-  const rows = fs.readFileSync(OUT, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l)).sort((a, b) => b.mailDate.localeCompare(a.mailDate));
+  rows = rows.sort((a, b) => b.mailDate.localeCompare(a.mailDate));
   const ExcelJS = require('exceljs');
   const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Policies', { views: [{ state: 'frozen', ySplit: 1 }] });
   ws.columns = [
-    { header: 'Mail date', key: 'mailDate', width: 12 }, { header: 'Vehicle', key: 'vehicle', width: 14 }, { header: 'Policy No', key: 'policyNo', width: 24 },
+    { header: 'Mail date', key: 'mailDate', width: 12 }, { header: 'Vehicle', key: 'vehicle', width: 14 }, { header: 'Policy No', key: 'policyNo', width: 24 }, { header: 'Proposal No', key: 'proposalNo', width: 24 },
     { header: 'Insured', key: 'insured', width: 28 }, { header: 'Mobile', key: 'mobile', width: 14 }, { header: 'From', key: 'from', width: 12 }, { header: 'To (expiry)', key: 'to', width: 12 },
     { header: 'Make/Model', key: 'make', width: 24 }, { header: 'Premium', key: 'premium', width: 10 }, { header: 'Mail from', key: 'mailFrom', width: 30 }, { header: 'Subject', key: 'subject', width: 40 }, { header: 'PDF', key: 'file', width: 50 },
   ];
-  ws.getRow(1).font = { bold: true }; ws.autoFilter = { from: 'A1', to: 'L1' };
+  ws.getRow(1).font = { bold: true }; ws.autoFilter = { from: 'A1', to: 'M1' };
   rows.forEach(r => ws.addRow({ ...r, file: path.basename(r.file) }));
   fs.mkdirSync(path.join(org.MERGED_ROOT, 'register'), { recursive: true });
   const xf = path.join(org.MERGED_ROOT, 'register', 'Policies.xlsx');

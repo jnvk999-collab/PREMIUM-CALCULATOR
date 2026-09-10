@@ -35,6 +35,7 @@ function parse(text) {
   const out = {};
   let m;
   if ((m = t.match(/Policy\s*(?:No|Number)\.?\s*[:\-]?\s*([0-9]{2,}[0-9\/\-]{6,})/i))) out.policyNo = m[1].trim();
+  if ((m = t.match(/Proposal\s*(?:No|Number|Form No)\.?\s*[:\-]?\s*([A-Z]{0,2}\/?\d[\d\/\-]{8,})/i))) out.proposalNo = m[1].trim().toUpperCase();
   if ((m = t.match(/(?:Name of (?:the )?Insured|Insured(?:'s)? Name|Insured)\s*[:\-]?\s*(?:Mr\.?|Mrs\.?|Ms\.?|M\/s\.?|Shri|Smt)?\s*([A-Z][A-Za-z.]+(?:\s+[A-Z][A-Za-z.]+){0,4})/))) {
     const STOP = /\b(Address|Mobile|Phone|Email|Policy|Period|Date|Registration|Vehicle|Contact|Pin|GSTIN|PAN|Hypothecat\w*)\b/;
     out.insured = m[1].split(STOP)[0].replace(/\s+/g, ' ').trim();
