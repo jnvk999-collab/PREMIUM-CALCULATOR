@@ -2,8 +2,8 @@
  * Daily reminders to your own WhatsApp chat, from reminders.txt (re-read every minute, no restart).
  *
  * One reminder per line:   HH:MM[-HH:MM]  [days]  message
- *   10:00-10:15  Mon-Sat  Mark attendance (before 10:15 AM)
- *   14:00-14:15  Mon-Sat  Mark afternoon attendance (before 2:15 PM)
+ *   10:00-10:15  Mon-Fri  Mark attendance (before 10:15 AM)
+ *   14:00-14:15  Mon-Fri  Mark afternoon attendance (before 2:15 PM)
  *   20:00        Sun      Prepare Monday renewals
  * The reminder goes at the first time; if the laptop was off then, it still goes as soon as the bot
  * is up, as long as the end time (default: 30 minutes later) has not passed. Days can be a range
@@ -19,8 +19,8 @@ const DEFAULT_FILE =
   '# Daily reminders sent to your own WhatsApp chat. Edit freely, no restart needed.\n' +
   '# Format:  start[-end]  [days]  message      (24-hour clock; days: Mon-Sat, Mon,Wed, daily)\n' +
   '# The reminder is sent at the start time (or as soon as the bot is up, if before the end time).\n' +
-  '10:00-10:15  Mon-Sat  ⏰ Mark attendance now - before 10:15 AM\n' +
-  '14:00-14:15  Mon-Sat  ⏰ Mark afternoon attendance now - before 2:15 PM\n';
+  '10:00-10:15  Mon-Fri  ⏰ Mark attendance now - before 10:15 AM\n' +
+  '14:00-14:15  Mon-Fri  ⏰ Mark afternoon attendance now - before 2:15 PM\n';
 
 function findFile() {
   try {
@@ -32,7 +32,13 @@ function findFile() {
 
 /** Creates reminders.txt with the attendance reminders if there is none yet. */
 function ensureFile() {
-  if (findFile()) return false;
+  const f = findFile();
+  if (f) {
+    // an untouched file from an earlier default (Mon-Sat) is upgraded to the current one
+    const old = DEFAULT_FILE.replace(/Mon-Fri/g, 'Mon-Sat');
+    if (fs.readFileSync(f, 'utf8') === old) { fs.writeFileSync(f, DEFAULT_FILE); return true; }
+    return false;
+  }
   fs.writeFileSync(path.join(DIR, 'reminders.txt'), DEFAULT_FILE);
   return true;
 }
