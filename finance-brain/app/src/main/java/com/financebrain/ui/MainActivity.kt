@@ -1,0 +1,163 @@
+package com.financebrain.ui
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material3.Button
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.financebrain.data.Transaction
+import com.financebrain.ui.screens.AddTransactionSheet
+import com.financebrain.ui.screens.HomeScreen
+import com.financebrain.ui.screens.InsightsScreen
+import com.financebrain.ui.screens.SettingsScreen
+import com.financebrain.ui.screens.TransactionDetailSheet
+import com.financebrain.ui.screens.TransactionsScreen
+import com.financebrain.ui.theme.FinanceBrainTheme
+
+class MainActivity : ComponentActivity() {
+    private val vm: MainViewModel by viewModels()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent { FinanceBrainTheme { App(vm) } }
+    }
+}
+
+private enum class Tab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Home("Home", Icons.Default.Home),
+    Transactions("Activity", Icons.Default.ReceiptLong),
+    Insights("Insights", Icons.Default.Insights),
+    Settings("Settings", Icons.Default.Settings),
+}
+
+private val SMS_PERMISSIONS = arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)
+
+@Composable
+private fun App(vm: MainViewModel) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    fun granted() = SMS_PERMISSIONS.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
+
+    var smsGranted by remember { mutableStateOf(granted()) }
+    var onboarded by rememberSaveable { mutableStateOf(granted()) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        smsGranted = granted()
+        if (smsGranted) { onboarded = true; vm.scanInbox() }
+    }
+
+    LaunchedEffect(smsGranted) { if (smsGranted) vm.scanInbox() }
+
+    if (!onboarded) {
+        Onboarding(onAllow = { launcher.launch(SMS_PERMISSIONS) }, onSkip = { onboarded = true })
+        return
+    }
+
+    val state by vm.state.collectAsStateWithLifecycle()
+    val scan by vm.scan.collectAsStateWithLifecycle()
+    var tab by rememberSaveable { mutableStateOf(Tab.Home) }
+    var selected by remember { mutableStateOf<Transaction?>(null) }
+    var adding by remember { mutableStateOf(false) }
+
+    // Keep the open sheet in sync with edits.
+    val live = selected?.let { s -> state.allTransactions.firstOrNull { it.id == s.id } }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                Tab.entries.forEach { t ->
+                    NavigationBarItem(selected = tab == t, onClick = { tab = t }, icon = { Icon(t.icon, t.label) }, label = { Text(t.label) })
+                }
+            }
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = { adding = true }, containerColor = MaterialTheme.colorScheme.primary) {
+                Icon(Icons.Default.Add, "Add transaction", tint = MaterialTheme.colorScheme.onPrimary)
+            }
+        }
+    ) { padding ->
+        when (tab) {
+            Tab.Home -> HomeScreen(state, scan, padding, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions })
+            Tab.Transactions -> TransactionsScreen(state.allTransactions, padding) { selected = it }
+            Tab.Insights -> InsightsScreen(state, padding)
+            Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { launcher.launch(SMS_PERMISSIONS) }, { full -> vm.scanInbox(full) })
+        }
+    }
+
+    if (live != null) TransactionDetailSheet(
+        t = live,
+        onDismiss = { selected = null },
+        onCategory = { c, remember -> vm.setCategory(live, c, remember) },
+        onNote = { vm.setNote(live, it) },
+        onDelete = { vm.delete(live); selected = null },
+    )
+
+    if (adding) AddTransactionSheet(
+        onDismiss = { adding = false },
+        onSave = { amount, dir, name, cat, note ->
+            vm.addManual(amount, dir, name, cat, System.currentTimeMillis(), note); adding = false
+        }
+    )
+}
+
+@Composable
+private fun Onboarding(onAllow: () -> Unit, onSkip: () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(Icons.Default.Sms, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(72.dp))
+        Spacer(Modifier.height(24.dp))
+        Text("Let Finance Brain read your bank alerts", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "It reads only bank and UPI alert messages from SBI, HDFC, ICICI, Federal Bank and PhonePe, including your past history, and builds your ledger automatically. Nothing is uploaded.",
+            style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(32.dp))
+        Button(onClick = onAllow, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Allow SMS access") }
+        TextButton(onClick = onSkip) { Text("Skip for now") }
+    }
+}
