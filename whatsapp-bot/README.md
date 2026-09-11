@@ -118,6 +118,10 @@ With `MAIL_WATCH=1` the bot also polls your Gmail inbox (IMAP, same App Password
 
 When someone sends a payment-confirmation screenshot (proposal number + amount), the bot reads it, finds the matching policy among the ones it knows (Gmail scan / mail-watch / Downloads), checks the paid amount against the premium, and sends the policy PDF to that chat. If the policy has not arrived yet, the request is parked and fulfilled automatically when the policy mail comes in. Amount mismatches are reported to you instead of sent.
 
+## Daily reminders
+
+`reminders.txt` (created on first start with the attendance reminders) sends fixed messages to your own chat every day. One per line: `start[-end]  [days]  message`, e.g. `10:00-10:15  Mon-Sat  ⏰ Mark attendance now - before 10:15 AM`. The message goes at the start time; if the laptop was off then, it goes as soon as the bot is up, unless the end time has passed. Edits apply within a minute, no restart. `reminders` in your own chat lists them.
+
 ## Renewals
 
 Put your renewal sheet in the bot folder as `renewals.xlsx` (columns are found by name: expiry / name / vehicle / policy / mobile). Every day at `RENEWAL_HOUR` the bot sends you, once per policy per milestone, the policies reaching `RENEWAL_MILESTONES` (default 7 days before, 2 days before, and on the day), with phone numbers; `due` or `due 7` in your own chat shows the upcoming list any time. `node scan-policies.js 365` pulls last year's policy PDFs from Gmail, reads policy number, insured, vehicle, period and mobile, and writes `merged/register/Policies.xlsx`; those expiries feed the reminders too.

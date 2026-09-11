@@ -19,6 +19,7 @@ const HELP = [
   '• *resend 8670 to name@gmail.com* – email that PDF',
   '• *count* – this month by group',
   '• *due* / *due 7* – policies expiring soon (from renewals.xlsx + scanned policies)',
+  '• *reminders* – the daily reminders (attendance etc.) from reminders.txt',
   '• forward a policy PDF here (or drop it in Downloads) – I offer to send it to whoever sent that vehicle',
   '• *help* – this list',
 ].join('\n');

@@ -36,6 +36,7 @@ const org = require('./lib/organise');
 const mailer = require('./lib/mailer');
 const routes = require('./lib/routes');
 const ignore = require('./lib/ignore');
+const reminders = require('./lib/reminders');
 const register = require('./lib/register');
 const commands = require('./lib/commands');
 const dispatch = require('./lib/dispatch');
@@ -307,6 +308,12 @@ async function onMessage(m) {
           console.log(`[renewals] ${t}: ${r.list.length} due`);
           return;
         }
+        if (/^reminders?$/i.test(t)) {
+          const d = reminders.describe();
+          await sendText(myJid, (d.lines.length ? '*Daily reminders* (edit reminders.txt)\n' + d.lines.join('\n') : 'No reminders set. Add lines to reminders.txt like:\n10:00-10:15  Mon-Sat  Mark attendance')
+            + (d.errors.length ? '\n\n⚠️ ' + d.errors.join('\n⚠️ ') : ''));
+          return;
+        }
         const res = await commands.handle(t, { mailer });
         if (res) {
           if (res.text) await sendText(myJid, res.text);
@@ -468,6 +475,19 @@ setInterval(async () => {
     if (!r.batches.length) console.log(`[renewals] checked ${r.total} policies, nothing due today`);
   } catch (e) { console.error('[renewals] ' + e.message); }
 }, 60 * 1000);
+
+// ── daily reminders to your own chat (reminders.txt: "10:00-10:15  Mon-Sat  Mark attendance") ──
+try { if (reminders.ensureFile()) console.log('[reminders] created reminders.txt with the attendance reminders'); } catch (e) { console.error('[reminders] ' + e.message); }
+setInterval(async () => {
+  if (!myJid) return;
+  try {
+    for (const r of reminders.due()) {
+      await sendText(myJid, r.text);
+      reminders.markSent(r);
+      console.log(`[reminders] sent: ${r.text}`);
+    }
+  } catch (e) { console.error('[reminders] ' + e.message); }
+}, 30 * 1000);
 
 // ── tiny private web page (for cloud servers with no screen) ───────────────
 // STATUS_PORT + STATUS_TOKEN in .env  ->  http://<server-ip>:<port>/<token>/
