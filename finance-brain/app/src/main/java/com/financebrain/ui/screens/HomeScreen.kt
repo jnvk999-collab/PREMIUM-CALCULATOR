@@ -49,6 +49,7 @@ import com.financebrain.ui.components.SectionTitle
 import com.financebrain.ui.components.ShareBar
 import com.financebrain.ui.components.StatPill
 import com.financebrain.ui.components.TransactionRow
+import com.financebrain.ui.components.UpdateCard
 import com.financebrain.ui.components.categoryColor
 import com.financebrain.ui.dayOfMonth
 import com.financebrain.ui.formatDay
@@ -66,6 +67,10 @@ fun HomeScreen(
     state: HomeState,
     scan: ScanProgress?,
     padding: PaddingValues,
+    update: com.financebrain.update.UpdateState,
+    onUpdateDownload: () -> Unit,
+    onUpdateInstall: () -> Unit,
+    onUpdateDismiss: () -> Unit,
     onShiftMonth: (Int) -> Unit,
     onOpenTransaction: (Transaction) -> Unit,
     onSeeAll: () -> Unit,
@@ -89,6 +94,8 @@ fun HomeScreen(
                 MonthSwitcher(state.month, isCurrentMonth, onShiftMonth)
             }
         }
+
+        item { UpdateCard(update, onUpdateDownload, onUpdateInstall, onUpdateDismiss) }
 
         if (scan != null && !scan.done) item { ScanBanner(scan) }
 

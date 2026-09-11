@@ -22,15 +22,33 @@ phone, and builds a complete ledger with balances, categories and insights. No t
 - **Manual cash entry** from the + button.
 - **Private by design.** Everything lives in a local Room database. Nothing is uploaded.
 
+## Automatic updates
+
+Every push that touches `finance-brain/` builds a signed APK and publishes it as a GitHub
+Release tagged `fb-v<version>.<build>`. The app checks GitHub on launch, shows an
+**Update available** card on the Home screen, downloads the APK, and hands it to the
+Android installer. No Play Store involved.
+
+One-time setup, because all builds must be signed with the same key:
+
+1. Actions tab → **Finance Brain · generate signing key** → Run workflow.
+2. Open the finished run. The summary shows the password; the artifact holds the key.
+3. Settings → Secrets and variables → Actions → add
+   `FINANCE_BRAIN_KEYSTORE_PASSWORD` and `FINANCE_BRAIN_KEYSTORE_BASE64`
+   (contents of `keystore-base64.txt`).
+4. Re-run **Finance Brain · build and release**. The first release appears under Releases.
+
 ## Install on your phone
 
-1. Download `app-debug.apk` from the latest GitHub Actions run (Actions tab → Build
-   Finance Brain APK → Artifacts), or build it locally with `./gradlew assembleDebug`.
+1. Download `finance-brain.apk` from the latest GitHub Release.
 2. Copy it to the phone and open it. Allow "install from unknown sources" if asked.
 3. Open Finance Brain and tap **Allow SMS access**. The history scan starts at once.
+4. When the first update arrives, Android asks once to let Finance Brain install apps.
 
 The app is side-loaded on purpose. Google Play does not allow SMS permissions for an
-app like this, and it is only for your own phone.
+app like this, and it is only for your own phone. A build made without the signing
+secrets (a local `./gradlew assembleDebug`, or an APK from before the key existed)
+cannot be updated over; uninstall it and install the first release once.
 
 ## Project layout
 

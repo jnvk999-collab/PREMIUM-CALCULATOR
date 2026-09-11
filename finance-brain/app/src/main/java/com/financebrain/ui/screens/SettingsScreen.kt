@@ -29,6 +29,10 @@ fun SettingsScreen(
     padding: PaddingValues,
     onRequestSms: () -> Unit,
     onRescan: (full: Boolean) -> Unit,
+    update: com.financebrain.update.UpdateState,
+    onCheckUpdate: () -> Unit,
+    onUpdateDownload: () -> Unit,
+    onUpdateInstall: () -> Unit,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
@@ -63,6 +67,30 @@ fun SettingsScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(onClick = { onRescan(false) }, enabled = smsGranted && scan?.done != false) { Text("Scan new messages") }
                     OutlinedButton(onClick = { onRescan(true) }, enabled = smsGranted && scan?.done != false) { Text("Full rescan") }
+                }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("App updates")
+                Text("Installed version ${com.financebrain.BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+                val status = when (update) {
+                    is com.financebrain.update.UpdateState.Checking -> "Checking…"
+                    is com.financebrain.update.UpdateState.UpToDate -> "You have the latest build."
+                    is com.financebrain.update.UpdateState.Available -> "Version ${update.update.versionName} is available."
+                    is com.financebrain.update.UpdateState.Downloading -> "Downloading ${(update.progress * 100).toInt()}%"
+                    is com.financebrain.update.UpdateState.ReadyToInstall -> "Downloaded. Tap Install."
+                    is com.financebrain.update.UpdateState.Failed -> "Check failed: ${update.message}"
+                    else -> "New builds are published automatically with every code change."
+                }
+                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    when (update) {
+                        is com.financebrain.update.UpdateState.Available -> Button(onClick = onUpdateDownload) { Text("Download update") }
+                        is com.financebrain.update.UpdateState.ReadyToInstall -> Button(onClick = onUpdateInstall) { Text("Install") }
+                        else -> OutlinedButton(onClick = onCheckUpdate, enabled = update !is com.financebrain.update.UpdateState.Checking && update !is com.financebrain.update.UpdateState.Downloading) { Text("Check for updates") }
+                    }
                 }
             }
         }

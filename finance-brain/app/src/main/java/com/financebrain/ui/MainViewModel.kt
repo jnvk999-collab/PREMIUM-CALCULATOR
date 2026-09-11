@@ -13,6 +13,8 @@ import com.financebrain.data.Recurring
 import com.financebrain.data.Transaction
 import com.financebrain.sms.ScanProgress
 import com.financebrain.sms.SmsInboxScanner
+import com.financebrain.update.UpdateManager
+import com.financebrain.update.UpdateState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,6 +43,32 @@ data class HomeState(
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = FinanceBrainApp.get(app).repository
     private val scanner = SmsInboxScanner(app, repo)
+    private val updater = UpdateManager(app)
+
+    private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val update: StateFlow<UpdateState> = _update
+
+    init { checkForUpdate() }
+
+    fun checkForUpdate() {
+        if (_update.value is UpdateState.Checking || _update.value is UpdateState.Downloading) return
+        viewModelScope.launch { _update.value = UpdateState.Checking; _update.value = updater.check() }
+    }
+
+    fun downloadUpdate() {
+        val u = (_update.value as? UpdateState.Available)?.update ?: return
+        viewModelScope.launch {
+            _update.value = UpdateState.Downloading(u, 0f)
+            _update.value = updater.download(u) { p -> _update.value = UpdateState.Downloading(u, p) }
+        }
+    }
+
+    fun installUpdate() {
+        val s = _update.value as? UpdateState.ReadyToInstall ?: return
+        if (updater.canInstall()) updater.install(s.file) else updater.openInstallPermission()
+    }
+
+    fun dismissUpdate() { if (_update.value !is UpdateState.Downloading) _update.value = UpdateState.Idle }
 
     private val _month = MutableStateFlow(monthStart(System.currentTimeMillis()))
     val month: StateFlow<Long> = _month

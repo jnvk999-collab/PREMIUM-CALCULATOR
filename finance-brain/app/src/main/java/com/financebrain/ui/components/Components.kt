@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.Work
@@ -205,6 +207,44 @@ fun StatPill(label: String, value: String, tint: Color, modifier: Modifier = Mod
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(2.dp))
         Text(value, style = MaterialTheme.typography.titleMedium, color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+fun UpdateCard(state: com.financebrain.update.UpdateState, onDownload: () -> Unit, onInstall: () -> Unit, onDismiss: () -> Unit) {
+    val (title, body) = when (state) {
+        is com.financebrain.update.UpdateState.Available -> "Update available · v${state.update.versionName}" to "A newer build is ready. Tap to download."
+        is com.financebrain.update.UpdateState.Downloading -> "Downloading v${state.update.versionName}" to "${(state.progress * 100).toInt()}%"
+        is com.financebrain.update.UpdateState.ReadyToInstall -> "Ready to install · v${state.update.versionName}" to "Android will ask you to confirm."
+        else -> return
+    }
+    Card(
+        Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.SystemUpdate, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                if (state is com.financebrain.update.UpdateState.Downloading) {
+                    Spacer(Modifier.height(8.dp))
+                    androidx.compose.material3.LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            when (state) {
+                is com.financebrain.update.UpdateState.Available -> androidx.compose.material3.Button(onClick = onDownload) { Text("Update") }
+                is com.financebrain.update.UpdateState.ReadyToInstall -> androidx.compose.material3.Button(onClick = onInstall) { Text("Install") }
+                else -> {}
+            }
+            if (state !is com.financebrain.update.UpdateState.Downloading) {
+                androidx.compose.material3.IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Later", tint = MaterialTheme.colorScheme.onPrimaryContainer) }
+            }
+        }
     }
 }
 

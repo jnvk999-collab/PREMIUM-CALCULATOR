@@ -95,6 +95,7 @@ private fun App(vm: MainViewModel) {
 
     val state by vm.state.collectAsStateWithLifecycle()
     val scan by vm.scan.collectAsStateWithLifecycle()
+    val update by vm.update.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var selected by remember { mutableStateOf<Transaction?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -118,10 +119,10 @@ private fun App(vm: MainViewModel) {
         }
     ) { padding ->
         when (tab) {
-            Tab.Home -> HomeScreen(state, scan, padding, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions })
+            Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions })
             Tab.Transactions -> TransactionsScreen(state.allTransactions, padding) { selected = it }
             Tab.Insights -> InsightsScreen(state, padding)
-            Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { launcher.launch(SMS_PERMISSIONS) }, { full -> vm.scanInbox(full) })
+            Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { launcher.launch(SMS_PERMISSIONS) }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate)
         }
     }
 
