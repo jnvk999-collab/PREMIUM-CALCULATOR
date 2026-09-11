@@ -15,11 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run: { working-directory: finance-brain }
-    env:
-      # 1000 + run number: strictly increasing, and always above a locally built APK (1).
-      VERSION_CODE: ${{ 1000 + github.run_number }}
     steps:
       - uses: actions/checkout@v4
+      - name: Build number (1000 + run number, always above a local build's 1)
+        run: echo "VERSION_CODE=$((1000 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "17" }
       - uses: android-actions/setup-android@v3
