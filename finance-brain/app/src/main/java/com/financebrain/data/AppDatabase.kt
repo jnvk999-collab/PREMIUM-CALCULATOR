@@ -74,8 +74,14 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE bank = :bank AND accountTail = :tail")
     suspend fun get(bank: String, tail: String): Account?
 
-    @Query("SELECT * FROM accounts ORDER BY bank, accountTail")
+    @Query("SELECT * FROM accounts WHERE balancePaise IS NOT NULL ORDER BY bank, accountTail")
     fun all(): Flow<List<Account>>
+
+    @Query("DELETE FROM accounts WHERE balancePaise IS NULL")
+    suspend fun deleteWithoutBalance()
+
+    @Query("DELETE FROM accounts")
+    suspend fun clear()
 }
 
 @Dao

@@ -7,6 +7,7 @@ import com.financebrain.data.TransactionRepository
 import com.financebrain.gmail.GmailAccounts
 import com.financebrain.gmail.GmailSyncWorker
 import com.financebrain.gmail.GmailSyncer
+import kotlinx.coroutines.launch
 
 class FinanceBrainApp : Application() {
     val database: AppDatabase by lazy { AppDatabase.get(this) }
@@ -17,6 +18,7 @@ class FinanceBrainApp : Application() {
     override fun onCreate() {
         super.onCreate()
         GmailSyncWorker.schedule(this)
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { repository.pruneAccounts() }
     }
 
     companion object {

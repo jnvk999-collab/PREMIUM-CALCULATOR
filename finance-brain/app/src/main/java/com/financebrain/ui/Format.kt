@@ -30,13 +30,14 @@ fun formatRupees(paise: Long, showPaise: Boolean = false, sign: Boolean = false)
 }
 
 fun compactRupees(paise: Long): String {
-    val r = paise / 100.0
-    return when {
+    val r = abs(paise) / 100.0
+    val body = when {
         r >= 1_00_00_000 -> "₹%.2fCr".format(r / 1_00_00_000)
         r >= 1_00_000 -> "₹%.2fL".format(r / 1_00_000)
         r >= 1_000 -> "₹%.1fk".format(r / 1_000)
         else -> "₹%.0f".format(r)
     }
+    return if (paise < 0) "-$body" else body
 }
 
 private val dayFmt = SimpleDateFormat("d MMM", Locale.ENGLISH)

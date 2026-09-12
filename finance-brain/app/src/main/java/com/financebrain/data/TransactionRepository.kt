@@ -52,19 +52,14 @@ class TransactionRepository(private val db: AppDatabase) {
             isTransfer = category == Categories.TRANSFER,
         )
         val id = db.transactions().insert(t)
-        if (p.accountTail != null && p.accountKind == "BANK") {
+        // An account exists only once a bank has reported a balance for it. Alerts that merely
+        // mention a masked number (cards, promos that slipped through, one-off references) do not
+        // create accounts.
+        if (p.accountTail != null && p.accountKind == "BANK" && p.balancePaise != null) {
             val existing = db.accounts().get(p.bank, p.accountTail)
             val newer = existing?.balanceAt == null || p.timestamp >= existing.balanceAt
-            if (existing == null || (p.balancePaise != null && newer)) {
-                db.accounts().upsert(
-                    Account(
-                        bank = p.bank,
-                        accountTail = p.accountTail,
-                        balancePaise = p.balancePaise ?: existing?.balancePaise,
-                        balanceAt = if (p.balancePaise != null) p.timestamp else existing?.balanceAt,
-                        kind = p.accountKind,
-                    )
-                )
+            if (existing == null || newer) {
+                db.accounts().upsert(Account(p.bank, p.accountTail, p.balancePaise, p.timestamp, p.accountKind))
             }
         }
         return id != -1L
@@ -108,8 +103,12 @@ class TransactionRepository(private val db: AppDatabase) {
     /** Full rescan: drop everything that came from SMS (manual entries and rules survive). */
     suspend fun purgeSms() {
         db.transactions().deleteBySource(Source.SMS)
+        db.accounts().clear()
         db.processedSms().clear()
     }
+
+    /** Drop account rows that never received a balance (created by older parser versions). */
+    suspend fun pruneAccounts() = db.accounts().deleteWithoutBalance()
 
     suspend fun setNote(t: Transaction, note: String?) = db.transactions().update(t.copy(note = note))
     suspend fun delete(t: Transaction) = db.transactions().delete(t.id)
