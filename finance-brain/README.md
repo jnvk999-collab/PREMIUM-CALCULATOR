@@ -38,6 +38,26 @@ One-time setup, because all builds must be signed with the same key:
    (contents of `keystore-base64.txt`).
 4. Re-run **Finance Brain · build and release**. The first release appears under Releases.
 
+## Gmail sync
+
+The app reads bank, card, UPI and order emails straight from Gmail on the phone, for as
+many accounts as you connect. Nothing goes through a server. Google requires a one-time
+OAuth client, created under your own Google account:
+
+1. Get the signing key SHA-1. It is printed in the summary of the
+   **generate signing key** workflow run and in every **build and release** run.
+2. At console.cloud.google.com create a project, e.g. "Finance Brain".
+3. APIs & Services → Library → enable **Gmail API**.
+4. APIs & Services → OAuth consent screen → External. App name, your email. Under
+   Test users add every Gmail address you want to sync.
+5. Credentials → Create credentials → OAuth client ID → **Android**.
+   Package name `com.financebrain`, SHA-1 from step 1.
+6. Copy the Client ID (ends in `apps.googleusercontent.com`) and paste it into
+   Settings → Gmail sync in the app. Then tap Connect Gmail and pick an account.
+
+While the consent screen is in Testing mode Google expires the login every 7 days.
+Publishing the consent screen (no verification needed for personal use) removes that.
+
 ## Install on your phone
 
 1. Download `finance-brain.apk` from the latest GitHub Release.

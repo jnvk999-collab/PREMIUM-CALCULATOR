@@ -129,6 +129,11 @@ private fun App(vm: MainViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
     val scan by vm.scan.collectAsStateWithLifecycle()
     val update by vm.update.collectAsStateWithLifecycle()
+    val gmail by vm.gmail.collectAsStateWithLifecycle()
+    val gmailProgress by vm.gmailProgress.collectAsStateWithLifecycle()
+    val gmailClientId by vm.gmailClientId.collectAsStateWithLifecycle()
+    val gmailError by vm.gmailError.collectAsStateWithLifecycle()
+    val gmailLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { vm.finishGmailSignIn(it.data) }
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var selected by remember { mutableStateOf<Transaction?>(null) }
     var adding by remember { mutableStateOf(false) }
@@ -155,7 +160,9 @@ private fun App(vm: MainViewModel) {
             Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions })
             Tab.Transactions -> TransactionsScreen(state.allTransactions, padding) { selected = it }
             Tab.Insights -> InsightsScreen(state, padding)
-            Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { requestSms() }, { openAppSettings() }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate)
+            Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { requestSms() }, { openAppSettings() }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate,
+                gmail, gmailProgress, gmailClientId, gmailError, vm::setGmailClientId,
+                { gmailLauncher.launch(vm.gmailAuth.signInIntent(gmailClientId)) }, vm::syncGmail, vm::removeGmail)
         }
     }
 

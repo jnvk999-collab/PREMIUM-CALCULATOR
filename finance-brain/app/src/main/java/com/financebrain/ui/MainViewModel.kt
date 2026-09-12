@@ -13,6 +13,9 @@ import com.financebrain.data.Recurring
 import com.financebrain.data.Transaction
 import com.financebrain.sms.ScanProgress
 import com.financebrain.sms.SmsInboxScanner
+import com.financebrain.gmail.GmailAccount
+import com.financebrain.gmail.GmailAuth
+import com.financebrain.gmail.GmailSyncProgress
 import com.financebrain.update.UpdateManager
 import com.financebrain.update.UpdateState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +47,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = FinanceBrainApp.get(app).repository
     private val scanner = SmsInboxScanner(app, repo)
     private val updater = UpdateManager(app)
+    private val gmailAccounts = FinanceBrainApp.get(app).gmailAccounts
+    private val gmailSyncer = FinanceBrainApp.get(app).gmailSyncer
+    val gmailAuth = GmailAuth(app)
+
+    private val _gmail = MutableStateFlow(gmailAccounts.list())
+    val gmail: StateFlow<List<GmailAccount>> = _gmail
+    val gmailProgress: StateFlow<GmailSyncProgress?> = gmailSyncer.progress
+    private val _gmailClientId = MutableStateFlow(gmailAccounts.clientId)
+    val gmailClientId: StateFlow<String> = _gmailClientId
+    private val _gmailError = MutableStateFlow<String?>(null)
+    val gmailError: StateFlow<String?> = _gmailError
+
+    fun setGmailClientId(id: String) { gmailAccounts.clientId = id; _gmailClientId.value = gmailAccounts.clientId }
+
+    fun finishGmailSignIn(data: android.content.Intent?) = viewModelScope.launch {
+        _gmailError.value = null
+        gmailAuth.complete(data).onSuccess { state ->
+            try {
+                val email = com.financebrain.gmail.GmailClient(getApplication(), state) {}.profileEmail()
+                gmailAccounts.save(email, state)
+                _gmail.value = gmailAccounts.list()
+                syncGmail()
+            } catch (e: Exception) { _gmailError.value = e.message }
+        }.onFailure { _gmailError.value = it.message }
+    }
+
+    fun removeGmail(email: String) { gmailAccounts.remove(email); _gmail.value = gmailAccounts.list() }
+
+    fun syncGmail() = viewModelScope.launch {
+        gmailSyncer.syncAll()
+        _gmail.value = gmailAccounts.list()
+    }
 
     private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val update: StateFlow<UpdateState> = _update

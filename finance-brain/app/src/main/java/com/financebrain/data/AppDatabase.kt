@@ -45,6 +45,19 @@ interface TransactionDao {
 
     @Query("UPDATE transactions SET category = :category WHERE counterparty = :counterparty AND userEdited = 0")
     suspend fun recategorizeMerchant(counterparty: String, category: String)
+
+    /** Same amount and direction within a time window: the cross-source duplicate check. */
+    @Query("SELECT * FROM transactions WHERE amountPaise = :amount AND direction = :direction AND timestamp BETWEEN :from AND :to LIMIT 5")
+    suspend fun similar(amount: Long, direction: Direction, from: Long, to: Long): List<Transaction>
+}
+
+@Dao
+interface ProcessedEmailDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(row: ProcessedEmail)
+
+    @Query("SELECT COUNT(*) FROM processed_email WHERE messageId = :id")
+    suspend fun exists(id: String): Int
 }
 
 @Dao
@@ -81,8 +94,8 @@ interface ProcessedSmsDao {
 }
 
 @Database(
-    entities = [Transaction::class, Account::class, MerchantRule::class, ProcessedSms::class],
-    version = 1,
+    entities = [Transaction::class, Account::class, MerchantRule::class, ProcessedSms::class, ProcessedEmail::class],
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -91,6 +104,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun accounts(): AccountDao
     abstract fun merchantRules(): MerchantRuleDao
     abstract fun processedSms(): ProcessedSmsDao
+    abstract fun processedEmail(): ProcessedEmailDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

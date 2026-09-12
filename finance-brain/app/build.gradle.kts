@@ -30,6 +30,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "UPDATE_REPO_OWNER", "\"$updateRepoOwner\"")
         buildConfigField("String", "UPDATE_REPO_NAME", "\"$updateRepoName\"")
+        // Optional default Google OAuth client id (Android type). Can also be entered in-app.
+        buildConfigField("String", "GMAIL_CLIENT_ID", "\"${System.getenv("GMAIL_CLIENT_ID") ?: ""}\"")
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.financebrain"
     }
 
     signingConfigs {
@@ -76,6 +79,10 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.appauth)
+    implementation(libs.androidx.browser)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.work.runtime.ktx)
     testImplementation(libs.junit)
     debugImplementation(libs.androidx.ui.tooling)
 }

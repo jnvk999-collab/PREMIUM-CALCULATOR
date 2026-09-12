@@ -14,6 +14,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.financebrain.sms.ScanProgress
@@ -34,6 +36,14 @@ fun SettingsScreen(
     onCheckUpdate: () -> Unit,
     onUpdateDownload: () -> Unit,
     onUpdateInstall: () -> Unit,
+    gmail: List<com.financebrain.gmail.GmailAccount>,
+    gmailProgress: com.financebrain.gmail.GmailSyncProgress?,
+    gmailClientId: String,
+    gmailError: String?,
+    onGmailClientId: (String) -> Unit,
+    onGmailAdd: () -> Unit,
+    onGmailSync: () -> Unit,
+    onGmailRemove: (String) -> Unit,
 ) {
     LazyColumn(
         contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
@@ -59,12 +69,51 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(onClick = onOpenAppSettings) { Text("Open app settings") }
                 }
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth()) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Gmail sync", style = MaterialTheme.typography.bodyLarge)
-                        Text("Coming in the next milestone", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Gmail sync")
+                if (gmailClientId.isBlank()) {
+                    var draft by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+                    Text(
+                        "Google requires a one-time OAuth client for apps that read Gmail. Create it under your Google account (see README), then paste the Android Client ID here.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = draft, onValueChange = { draft = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Client ID (…apps.googleusercontent.com)") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = { onGmailClientId(draft) }, enabled = draft.contains("apps.googleusercontent.com")) { Text("Save") }
+                } else {
+                    if (gmail.isEmpty()) Text("No accounts connected yet. Bank, card, UPI and order emails will be read and matched against your SMS transactions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    gmail.forEach { a ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(a.email, style = MaterialTheme.typography.bodyLarge)
+                                val p = gmailProgress
+                                val status = when {
+                                    p != null && p.email == a.email && !p.done -> "Syncing… ${p.fetched} read, ${p.imported} new"
+                                    a.lastError != null -> "Error: ${a.lastError}"
+                                    a.lastSyncAt == 0L -> "Not synced yet"
+                                    else -> "${a.imported} imported · last sync ${com.financebrain.ui.formatDay(a.lastSyncAt)} ${com.financebrain.ui.formatTime(a.lastSyncAt)}" + if (a.historyComplete) "" else " · history in progress"
+                                }
+                                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            androidx.compose.material3.TextButton(onClick = { onGmailRemove(a.email) }) { Text("Remove") }
+                        }
                     }
+                    if (gmailError != null) Text(gmailError, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(onClick = onGmailAdd) { Text(if (gmail.isEmpty()) "Connect Gmail" else "Add account") }
+                        if (gmail.isNotEmpty()) OutlinedButton(onClick = onGmailSync, enabled = gmailProgress?.done != false) { Text("Sync now") }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text("Syncs automatically every 4 hours on Wi-Fi or data. Read-only access; emails stay on this phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    androidx.compose.material3.TextButton(onClick = { onGmailClientId("") }) { Text("Change client ID") }
                 }
             }
         }

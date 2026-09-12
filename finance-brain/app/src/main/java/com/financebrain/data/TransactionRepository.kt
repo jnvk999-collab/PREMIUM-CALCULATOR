@@ -16,6 +16,19 @@ class TransactionRepository(private val db: AppDatabase) {
 
     /** Stores a parsed alert. Returns true when it was new. */
     suspend fun ingest(p: ParsedTransaction, raw: String, source: Source): Boolean {
+        // An email for a payment the SMS already captured: keep the SMS row, but borrow the
+        // merchant name if the SMS only had a generic one.
+        if (source != Source.SMS) {
+            val twin = db.transactions().similar(p.amountPaise, p.direction, p.timestamp - 36 * 3_600_000L, p.timestamp + 36 * 3_600_000L)
+                .firstOrNull { it.source != source }
+            if (twin != null) {
+                if (twin.counterparty.endsWith("transaction") || twin.counterparty == "Bank Transfer") {
+                    val cat = Categorizer.categorize(p.counterparty, twin.channel, twin.direction, raw)
+                    db.transactions().update(twin.copy(counterparty = p.counterparty, category = if (twin.userEdited) twin.category else cat))
+                }
+                return false
+            }
+        }
         val key = dedupKey(p)
         val counterparty = p.counterparty
         val rule = db.merchantRules().get(Categorizer.merchantKey(counterparty))
@@ -89,6 +102,8 @@ class TransactionRepository(private val db: AppDatabase) {
     suspend fun processedSmsIds(): Set<Long> = db.processedSms().ids().toSet()
     suspend fun markProcessed(rows: List<ProcessedSms>) = db.processedSms().insertAll(rows)
     suspend fun resetSmsProgress() = db.processedSms().clear()
+    suspend fun isEmailProcessed(id: String) = db.processedEmail().exists(id) > 0
+    suspend fun markEmailProcessed(id: String, parsed: Boolean) = db.processedEmail().insert(ProcessedEmail(id, parsed))
 
     private fun dedupKey(p: ParsedTransaction): String {
         val cal = Calendar.getInstance().apply { timeInMillis = p.timestamp }

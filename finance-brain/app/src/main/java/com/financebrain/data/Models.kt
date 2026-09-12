@@ -57,6 +57,13 @@ data class ProcessedSms(
     val parsed: Boolean,
 )
 
+/** Tracks which Gmail messages were already processed. */
+@Entity(tableName = "processed_email")
+data class ProcessedEmail(
+    @PrimaryKey val messageId: String,
+    val parsed: Boolean,
+)
+
 object Categories {
     const val FOOD = "Food & Dining"
     const val GROCERIES = "Groceries"

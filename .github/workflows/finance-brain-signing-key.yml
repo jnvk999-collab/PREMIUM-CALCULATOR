@@ -18,7 +18,11 @@ jobs:
             -storepass "$PW" -keypass "$PW" -dname "CN=Finance Brain, O=Personal, C=IN"
           base64 -w0 finance-brain.jks > keystore-base64.txt
           echo "$PW" > keystore-password.txt
+          SHA1=$(keytool -list -v -keystore finance-brain.jks -alias financebrain -storepass "$PW" | grep -E "SHA1:" | head -1 | sed 's/.*SHA1: //')
           {
+            echo "## Gmail sync: SHA-1 fingerprint for the Google OAuth client (Android)"
+            echo '```'; echo "$SHA1"; echo '```'
+            echo
             echo "## Add these two repository secrets"
             echo "Settings → Secrets and variables → Actions → New repository secret"
             echo
