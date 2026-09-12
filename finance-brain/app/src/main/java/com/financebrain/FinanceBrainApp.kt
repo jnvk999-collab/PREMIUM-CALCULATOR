@@ -15,12 +15,33 @@ class FinanceBrainApp : Application() {
     fun ignoredBanks(): Set<String> = prefs.getStringSet("ignored_banks", null) ?: DEFAULT_IGNORED
     fun setIgnoredBanks(v: Set<String>) { prefs.edit().putStringSet("ignored_banks", v).apply() }
     val repository: TransactionRepository by lazy { TransactionRepository(database) { ignoredBanks() } }
+
+    var salaryDay: Int
+        get() = prefs.getInt("salary_day", 1)
+        set(v) { prefs.edit().putInt("salary_day", v.coerceIn(1, 28)).apply(); com.financebrain.ui.Cycle.salaryDay = v.coerceIn(1, 28) }
+    var investTargetPct: Int
+        get() = prefs.getInt("invest_pct", 20)
+        set(v) { prefs.edit().putInt("invest_pct", v.coerceIn(0, 80)).apply() }
+    var monthlyBudgetPaise: Long
+        get() = prefs.getLong("monthly_budget", 0L)
+        set(v) { prefs.edit().putLong("monthly_budget", v).apply() }
+    var daughterName: String
+        get() = prefs.getString("daughter_name", "") ?: ""
+        set(v) { prefs.edit().putString("daughter_name", v.trim()).apply() }
+    var dailyAlertEnabled: Boolean
+        get() = prefs.getBoolean("daily_alert", false)
+        set(v) { prefs.edit().putBoolean("daily_alert", v).apply() }
+    var dailyAlertHour: Int
+        get() = prefs.getInt("daily_alert_hour", 21)
+        set(v) { prefs.edit().putInt("daily_alert_hour", v.coerceIn(0, 23)).apply() }
     val gmailAccounts: GmailAccounts by lazy { GmailAccounts(this) }
     val gmailSyncer: GmailSyncer by lazy { GmailSyncer(this, repository, gmailAccounts) }
 
     override fun onCreate() {
         super.onCreate()
+        com.financebrain.ui.Cycle.salaryDay = salaryDay
         GmailSyncWorker.schedule(this)
+        com.financebrain.alerts.DailyAlertWorker.schedule(this)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             repository.pruneAccounts()
             ignoredBanks().forEach { repository.purgeBank(it) }

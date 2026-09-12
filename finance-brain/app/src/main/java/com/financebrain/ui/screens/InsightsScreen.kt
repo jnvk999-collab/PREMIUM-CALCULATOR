@@ -47,36 +47,37 @@ import com.financebrain.ui.components.StatPill
 import com.financebrain.ui.compactRupees
 import com.financebrain.ui.formatDay
 import com.financebrain.ui.formatMonth
+import com.financebrain.ui.formatCycle
 import com.financebrain.ui.formatMonthShort
 import com.financebrain.ui.formatRupees
 import com.financebrain.ui.theme.Coral
 import com.financebrain.ui.theme.Leaf
 import com.financebrain.ui.theme.Teal
 
-private val segments = listOf("Trends", "Recurring", "Investments", "Loans & Salary")
+private val segments = listOf("Trends", "Recurring", "Cards", "Calendar", "Investments", "Loans & Salary", "Goals", "Discipline")
 
 @Composable
-fun InsightsScreen(state: HomeState, padding: PaddingValues) {
-    var seg by rememberSaveable { mutableStateOf(0) }
+fun InsightsScreen(state: HomeState, plan: com.financebrain.ui.PlanState, vm: com.financebrain.ui.MainViewModel, padding: PaddingValues, initial: Int = 0, onOpenSettings: () -> Unit = {}) {
+    var seg by rememberSaveable(initial) { mutableStateOf(initial) }
     LazyColumn(
         contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item { Text("Insights", style = MaterialTheme.typography.headlineSmall) }
+        item { Text("Money", style = MaterialTheme.typography.headlineSmall) }
         item {
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                segments.forEachIndexed { i, label ->
-                    SegmentedButton(selected = seg == i, onClick = { seg = i }, shape = SegmentedButtonDefaults.itemShape(i, segments.size)) {
-                        Text(label, maxLines = 1, style = MaterialTheme.typography.labelSmall)
-                    }
-                }
+            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(segments.size) { i -> FilterChip(selected = seg == i, onClick = { seg = i }, label = { Text(segments[i]) }) }
             }
         }
         when (seg) {
             0 -> trends(state)
             1 -> recurring(state)
-            2 -> investments(state)
-            else -> loansAndSalary(state)
+            2 -> cardsSection(plan, vm)
+            3 -> calendarSection(state, plan)
+            4 -> investments(state)
+            5 -> loansAndSalary(state)
+            6 -> goalsSection(plan, vm)
+            else -> disciplineSection(plan, vm, onOpenSettings)
         }
     }
 }
@@ -168,7 +169,7 @@ private fun LazyListScope.trends(state: HomeState) {
     }
     item {
         SectionCard {
-            SectionTitle("Top merchants · ${formatMonth(state.month)}")
+            SectionTitle("Top merchants · ${formatCycle(state.month)}")
             if (state.topMerchants.isEmpty()) EmptyHint("No spending this month.")
             val max = state.topMerchants.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
             state.topMerchants.forEach { (m, p) ->

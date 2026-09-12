@@ -31,6 +31,7 @@ data class Transaction(
     val dedupKey: String,
     val isTransfer: Boolean = false,
     val userEdited: Boolean = false,
+    val accountKind: String = "BANK",   // BANK, CARD, INVEST
 )
 
 /** A bank account learned from alerts. Balance is the last one a message reported. */
@@ -94,6 +95,7 @@ object Categories {
     const val RENT = "Rent"
     const val EDUCATION = "Education"
     const val CASH = "Cash Withdrawal"
+    const val CARD_BILL = "Card Bill Payment"
     const val TRANSFER = "Transfers"
     const val SALARY = "Salary"
     const val INCOME = "Other Income"
@@ -102,8 +104,84 @@ object Categories {
 
     val expense = listOf(
         FOOD, GROCERIES, SHOPPING, TRAVEL, FUEL, BILLS, UTILITIES, ENTERTAINMENT,
-        HEALTH, EMI, INVESTMENT, RENT, EDUCATION, CASH, TRANSFER, OTHER
+        HEALTH, EMI, INVESTMENT, RENT, EDUCATION, CASH, CARD_BILL, TRANSFER, OTHER
     )
     val income = listOf(SALARY, INCOME, REFUND, TRANSFER, OTHER)
     val all = (expense + income).distinct()
 }
+
+
+/** A credit card, auto-detected from card alerts or added by hand. key = "bank|tail". */
+@Entity(tableName = "credit_cards")
+data class CreditCard(
+    @PrimaryKey val key: String,
+    val name: String,
+    val bank: String,
+    val tail: String,
+    val limitPaise: Long?,
+    val billingDay: Int,        // statement generation day (1-28)
+    val dueDaysAfter: Int = 20, // payment due this many days after billing
+    val color: Int = 0,
+)
+
+@Entity(tableName = "goals")
+data class Goal(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val icon: String = "🎯",
+    val targetPaise: Long,
+    val savedPaise: Long = 0,
+    val deadline: Long?,        // epoch ms or null
+    val notes: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+/** Money someone owes you. */
+@Entity(tableName = "receivables")
+data class Receivable(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val from: String,
+    val amountPaise: Long,
+    val dueDate: Long?,
+    val notes: String? = null,
+    val received: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+/** Informal loan you took (friend, family, employer advance). */
+@Entity(tableName = "informal_loans")
+data class InformalLoan(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val lender: String,
+    val amountPaise: Long,
+    val takenDate: Long,
+    val dueDate: Long?,
+    val notes: String? = null,
+    val repaid: Boolean = false,
+)
+
+/** A category you want to keep under a monthly limit. */
+@Entity(tableName = "controlled_categories")
+data class ControlledCategory(
+    @PrimaryKey val category: String,
+    val monthlyLimitPaise: Long,
+    val note: String? = null,
+)
+
+/** A category you want to spend nothing on. Any spend in a cycle is a breach. */
+@Entity(tableName = "zero_tolerance")
+data class ZeroTolerance(
+    @PrimaryKey val category: String,
+    val note: String? = null,
+    val since: Long = System.currentTimeMillis(),
+)
+
+/** Self-fine jar entries and regret log entries. kind = FINE or REGRET. */
+@Entity(tableName = "discipline_entries")
+data class DisciplineEntry(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val kind: String,
+    val amountPaise: Long,
+    val reason: String,
+    val at: Long = System.currentTimeMillis(),
+)

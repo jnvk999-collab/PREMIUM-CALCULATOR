@@ -9,6 +9,18 @@ import com.financebrain.brain.BrainAsk
 import com.financebrain.brain.BrainReport
 import com.financebrain.brain.BrainSettings
 import com.financebrain.data.Account
+import com.financebrain.data.Allocation
+import com.financebrain.data.CalendarEvent
+import com.financebrain.data.CardStatus
+import com.financebrain.data.ControlledCategory
+import com.financebrain.data.CreditCard
+import com.financebrain.data.DisciplineEntry
+import com.financebrain.data.DisciplineStatus
+import com.financebrain.data.Goal
+import com.financebrain.data.InformalLoan
+import com.financebrain.data.Planning
+import com.financebrain.data.Receivable
+import com.financebrain.data.ZeroTolerance
 import com.financebrain.data.BalanceAnchor
 import com.financebrain.data.CategoryTotal
 import com.financebrain.data.Direction
@@ -33,6 +45,23 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+data class PlanState(
+    val cards: List<CardStatus> = emptyList(),
+    val allocation: Allocation? = null,
+    val calendar: List<CalendarEvent> = emptyList(),
+    val goals: List<Goal> = emptyList(),
+    val receivables: List<Receivable> = emptyList(),
+    val informalLoans: List<InformalLoan> = emptyList(),
+    val discipline: DisciplineStatus? = null,
+    val controlled: List<ControlledCategory> = emptyList(),
+    val zero: List<ZeroTolerance> = emptyList(),
+    val entries: List<DisciplineEntry> = emptyList(),
+    val salaryDay: Int = 1,
+    val investPct: Int = 20,
+    val budgetPaise: Long = 0,
+    val daughterName: String = "",
+)
 
 data class HomeState(
     val month: Long,
@@ -194,6 +223,57 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         appRef.setIgnoredBanks(next); _ignoredBanks.value = next
         if (ignored) repo.purgeBank(bank)
     }
+
+    private val _settingsTick = MutableStateFlow(0)
+    val plan: StateFlow<PlanState> = combine(
+        combine(state, repo.cards, repo.goals, repo.receivables, repo.informalLoans) { s, cards, goals, recv, loans -> arrayOf(s, cards, goals, recv, loans) },
+        combine(repo.controlled, repo.zeroTolerance, repo.disciplineEntries, _settingsTick) { c, z, e, _ -> Triple(c, z, e) },
+    ) { a, d ->
+        @Suppress("UNCHECKED_CAST")
+        val s = a[0] as HomeState; val cards = a[1] as List<CreditCard>; val goals = a[2] as List<Goal>
+        val recv = a[3] as List<Receivable>; val loans = a[4] as List<InformalLoan>
+        val now = System.currentTimeMillis()
+        val statuses = cards.map { Planning.cardStatus(it, s.allTransactions, now) }
+        val debits = s.recurring.filter { it.direction == Direction.DEBIT }
+        PlanState(
+            cards = statuses,
+            allocation = Planning.allocation(s.allTransactions, s.month, now, s.salary, s.loans, statuses, debits, appRef.investTargetPct),
+            calendar = Planning.calendar(s.month, appRef.salaryDay, s.salary, s.loans, statuses, s.recurring),
+            goals = goals, receivables = recv, informalLoans = loans,
+            discipline = Planning.discipline(s.allTransactions, s.month, d.first, d.second, d.third, now),
+            controlled = d.first, zero = d.second, entries = d.third,
+            salaryDay = appRef.salaryDay, investPct = appRef.investTargetPct, budgetPaise = appRef.monthlyBudgetPaise, daughterName = appRef.daughterName,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanState())
+
+    fun setSalaryDay(d: Int) { appRef.salaryDay = d; _month.value = monthStart(System.currentTimeMillis()); _settingsTick.value++ }
+    fun setInvestPct(p: Int) { appRef.investTargetPct = p; _settingsTick.value++ }
+    fun setBudget(paise: Long) { appRef.monthlyBudgetPaise = paise; _settingsTick.value++ }
+    fun setDaughterName(n: String) { appRef.daughterName = n; _settingsTick.value++ }
+    fun setDailyAlert(enabled: Boolean, hour: Int) { appRef.dailyAlertEnabled = enabled; appRef.dailyAlertHour = hour; com.financebrain.alerts.DailyAlertWorker.schedule(getApplication()); _settingsTick.value++ }
+
+    fun saveCard(c: CreditCard) = viewModelScope.launch { repo.saveCard(c) }
+    fun deleteCard(key: String) = viewModelScope.launch { repo.deleteCard(key) }
+    fun saveGoal(g: Goal) = viewModelScope.launch { repo.saveGoal(g) }
+    fun deleteGoal(id: Long) = viewModelScope.launch { repo.deleteGoal(id) }
+    fun saveReceivable(r: Receivable) = viewModelScope.launch { repo.saveReceivable(r) }
+    fun deleteReceivable(id: Long) = viewModelScope.launch { repo.deleteReceivable(id) }
+    fun saveInformalLoan(l: InformalLoan) = viewModelScope.launch { repo.saveInformalLoan(l) }
+    fun deleteInformalLoan(id: Long) = viewModelScope.launch { repo.deleteInformalLoan(id) }
+    fun saveControlled(c: ControlledCategory) = viewModelScope.launch { repo.saveControlled(c) }
+    fun deleteControlled(category: String) = viewModelScope.launch { repo.deleteControlled(category) }
+    fun saveZero(z: ZeroTolerance) = viewModelScope.launch { repo.saveZero(z) }
+    fun deleteZero(category: String) = viewModelScope.launch { repo.deleteZero(category) }
+    fun addDisciplineEntry(kind: String, amountPaise: Long, reason: String) = viewModelScope.launch { repo.addDisciplineEntry(DisciplineEntry(kind = kind, amountPaise = amountPaise, reason = reason)) }
+    fun deleteDisciplineEntry(id: Long) = viewModelScope.launch { repo.deleteDisciplineEntry(id) }
+
+    private val backup = com.financebrain.data.BackupManager(app, FinanceBrainApp.get(app).database, repo)
+    private val _toast = MutableStateFlow<String?>(null)
+    val toast: StateFlow<String?> = _toast
+    fun clearToast() { _toast.value = null }
+    fun exportBackup(uri: android.net.Uri) = viewModelScope.launch { _toast.value = try { "Backup saved with ${backup.export(uri)} transactions." } catch (e: Exception) { "Backup failed: ${e.message}" } }
+    fun restoreBackup(uri: android.net.Uri) = viewModelScope.launch { _toast.value = try { backup.restore(uri).also { _settingsTick.value++; _month.value = monthStart(System.currentTimeMillis()) } } catch (e: Exception) { "Restore failed: ${e.message}" } }
+    fun importCsv(uri: android.net.Uri, bank: String) = viewModelScope.launch { _toast.value = try { backup.importCsv(uri, bank) } catch (e: Exception) { "Import failed: ${e.message}" } }
 
     fun setBalance(key: String, amountPaise: Long, at: Long) = viewModelScope.launch { repo.setBalance(key, amountPaise, at) }
     fun clearBalance(key: String) = viewModelScope.launch { repo.clearBalance(key) }

@@ -14,6 +14,7 @@ import com.financebrain.data.Recurring
 import com.financebrain.data.Transaction
 import com.financebrain.ui.formatDay
 import com.financebrain.ui.formatMonth
+import com.financebrain.ui.formatCycle
 import com.financebrain.ui.formatRupees
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -53,7 +54,7 @@ class BrainAsk(private val settings: BrainSettings) {
         recurring: List<Recurring>, report: BrainReport, month: Long,
     ): String {
         val sb = StringBuilder()
-        sb.append("Selected month: ").append(formatMonth(month)).append('\n')
+        sb.append("Selected month: ").append(formatCycle(month)).append('\n')
         sb.append("Health score ").append(report.score).append(" (").append(report.scoreLabel).append(")\n")
         sb.append("Accounts (last reported balances):\n")
         accounts.forEach { sb.append("- ${it.bank} ..${it.accountTail}: ${it.balancePaise?.let(::formatRupees) ?: "unknown"}\n") }

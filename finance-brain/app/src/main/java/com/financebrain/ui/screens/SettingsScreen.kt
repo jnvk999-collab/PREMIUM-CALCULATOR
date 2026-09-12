@@ -50,12 +50,73 @@ fun SettingsScreen(
     knownBanks: List<String> = emptyList(),
     ignoredBanks: Set<String> = emptySet(),
     onBankIgnored: (String, Boolean) -> Unit = { _, _ -> },
+    plan: com.financebrain.ui.PlanState = com.financebrain.ui.PlanState(),
+    onSalaryDay: (Int) -> Unit = {},
+    onInvestPct: (Int) -> Unit = {},
+    onBudget: (Long) -> Unit = {},
+    onDaughter: (String) -> Unit = {},
+    alertEnabled: Boolean = false, alertHour: Int = 21,
+    onDailyAlert: (Boolean, Int) -> Unit = { _, _ -> },
+    onBackup: () -> Unit = {}, onRestore: () -> Unit = {}, onImportCsv: () -> Unit = {},
 ) {
     LazyColumn(
         contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { Text("Settings", style = MaterialTheme.typography.headlineSmall) }
+        item {
+            SectionCard {
+                SectionTitle("Salary cycle & plan")
+                var sd by androidx.compose.runtime.remember(plan.salaryDay) { androidx.compose.runtime.mutableStateOf(plan.salaryDay.toString()) }
+                var pct by androidx.compose.runtime.remember(plan.investPct) { androidx.compose.runtime.mutableStateOf(plan.investPct.toString()) }
+                var budget by androidx.compose.runtime.remember(plan.budgetPaise) { androidx.compose.runtime.mutableStateOf(if (plan.budgetPaise > 0) (plan.budgetPaise / 100).toString() else "") }
+                var name by androidx.compose.runtime.remember(plan.daughterName) { androidx.compose.runtime.mutableStateOf(plan.daughterName) }
+                Text("The app's month starts on your salary day. With day 1 it is the calendar month.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.material3.OutlinedTextField(sd, { sd = it.filter(Char::isDigit).take(2) }, label = { Text("Salary day (1-28)") }, singleLine = true, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.OutlinedTextField(pct, { pct = it.filter(Char::isDigit).take(2) }, label = { Text("Invest target %") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedTextField(budget, { v -> if (v.all(Char::isDigit)) budget = v }, label = { Text("Spending budget per cycle (₹), optional") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedTextField(name, { name = it }, label = { Text("Name for the 'what it could have been' view (e.g. your daughter)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = {
+                    sd.toIntOrNull()?.let { if (it in 1..28) onSalaryDay(it) }
+                    pct.toIntOrNull()?.let { if (it in 0..80) onInvestPct(it) }
+                    onBudget((budget.toLongOrNull() ?: 0L) * 100)
+                    onDaughter(name)
+                }) { Text("Save") }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Evening spend alert")
+                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Daily summary at ${"%02d:00".format(alertHour)}", style = MaterialTheme.typography.bodyLarge)
+                        Text("What went out today and what is left for the cycle.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    androidx.compose.material3.Switch(checked = alertEnabled, onCheckedChange = { onDailyAlert(it, alertHour) })
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(20, 21, 22).forEach { h -> androidx.compose.material3.FilterChip(selected = alertHour == h, onClick = { onDailyAlert(alertEnabled, h) }, label = { Text("%02d:00".format(h)) }) }
+                }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Backup & import")
+                Text("Backup writes everything to a file you choose (transactions, cards, goals, rules, settings). Restore merges it back. CSV import reads a bank statement export.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = onBackup) { Text("Backup") }
+                    OutlinedButton(onClick = onRestore) { Text("Restore") }
+                    OutlinedButton(onClick = onImportCsv) { Text("Import CSV") }
+                }
+            }
+        }
         item {
             SectionCard {
                 SectionTitle("Automatic tracking")

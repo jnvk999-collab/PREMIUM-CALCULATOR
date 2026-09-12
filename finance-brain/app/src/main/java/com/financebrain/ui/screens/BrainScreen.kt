@@ -42,6 +42,7 @@ import com.financebrain.ui.components.EmptyHint
 import com.financebrain.ui.components.SectionCard
 import com.financebrain.ui.components.SectionTitle
 import com.financebrain.ui.formatMonth
+import com.financebrain.ui.formatCycle
 import com.financebrain.ui.theme.Amber
 import com.financebrain.ui.theme.Coral
 import com.financebrain.ui.theme.Leaf
@@ -66,7 +67,7 @@ fun BrainScreen(
     ) {
         item {
             Text("Brain", style = MaterialTheme.typography.headlineSmall)
-            Text("Analysis for ${formatMonth(month)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Analysis for ${formatCycle(month)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (report == null) {
             item { SectionCard { EmptyHint("Once transactions are in, the analysis appears here.") } }

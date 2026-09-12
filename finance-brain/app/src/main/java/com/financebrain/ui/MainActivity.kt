@@ -72,7 +72,7 @@ private enum class Tab(val label: String, val icon: androidx.compose.ui.graphics
     Home("Home", Icons.Default.Home),
     Transactions("Activity", Icons.Default.ReceiptLong),
     Brain("Brain", Icons.Default.Psychology),
-    Insights("Insights", Icons.Default.Insights),
+    Insights("Money", Icons.Default.Insights),
     Settings("Settings", Icons.Default.Settings),
 }
 
@@ -140,6 +140,19 @@ private fun App(vm: MainViewModel) {
     val chat by vm.chat.collectAsStateWithLifecycle()
     val hasApiKey by vm.hasApiKey.collectAsStateWithLifecycle()
     val knownBanks by vm.knownBanks.collectAsStateWithLifecycle()
+    val plan by vm.plan.collectAsStateWithLifecycle()
+    val toast by vm.toast.collectAsStateWithLifecycle()
+    var moneySection by rememberSaveable { mutableStateOf(0) }
+    val app = context.applicationContext as com.financebrain.FinanceBrainApp
+    var alertEnabled by remember { mutableStateOf(app.dailyAlertEnabled) }
+    var alertHour by remember { mutableStateOf(app.dailyAlertHour) }
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) { vm.setDailyAlert(true, alertHour); alertEnabled = true } }
+    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri -> if (uri != null) vm.exportBackup(uri) }
+    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.restoreBackup(uri) }
+    var csvBank by remember { mutableStateOf<String?>(null) }
+    val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.importCsv(uri, csvBank ?: "Statement") }
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    LaunchedEffect(toast) { toast?.let { snackbar.showSnackbar(it); vm.clearToast() } }
     val ignoredBanks by vm.ignoredBanks.collectAsStateWithLifecycle()
     val gmailLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { vm.finishGmailSignIn(it.data) }
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
@@ -152,6 +165,7 @@ private fun App(vm: MainViewModel) {
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 Tab.entries.forEach { t ->
@@ -166,14 +180,24 @@ private fun App(vm: MainViewModel) {
         }
     ) { padding ->
         when (tab) {
-            Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions }, { tab = Tab.Brain }, { settingBalance = true })
+            Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions }, { tab = Tab.Brain }, { settingBalance = true }, plan.allocation, { moneySection = 2; tab = Tab.Insights })
             Tab.Brain -> BrainScreen(state.report, state.month, chat, hasApiKey, padding, vm::ask) { tab = Tab.Settings }
             Tab.Transactions -> TransactionsScreen(state.allTransactions, padding) { selected = it }
-            Tab.Insights -> InsightsScreen(state, padding)
+            Tab.Insights -> InsightsScreen(state, plan, vm, padding, moneySection) { tab = Tab.Settings }
             Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { requestSms() }, { openAppSettings() }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate,
                 gmail, gmailProgress, gmailClientId, gmailError, vm::setGmailClientId,
                 { vm.clearGmailError(); gmailLauncher.launch(vm.gmailAuth.signInIntent(gmailClientId)) }, vm::syncGmail, vm::removeGmail,
-                hasApiKey, vm::setApiKey, knownBanks, ignoredBanks, vm::setBankIgnored)
+                hasApiKey, vm::setApiKey, knownBanks, ignoredBanks, vm::setBankIgnored,
+                plan, vm::setSalaryDay, vm::setInvestPct, vm::setBudget, vm::setDaughterName,
+                alertEnabled, alertHour,
+                { on, h ->
+                    alertHour = h
+                    if (on && ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    else { vm.setDailyAlert(on, h); alertEnabled = on }
+                },
+                { backupLauncher.launch("finance-brain-backup-${java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.ENGLISH).format(java.util.Date())}.json") },
+                { restoreLauncher.launch(arrayOf("application/json", "*/*")) },
+                { csvBank = "Statement"; csvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "*/*")) })
         }
     }
 

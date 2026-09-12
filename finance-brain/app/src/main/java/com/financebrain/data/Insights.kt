@@ -26,7 +26,7 @@ data class MonthSummary(val monthStart: Long, val incomePaise: Long, val expense
 object Insights {
 
     /** Spending only: debits that are neither transfers between own accounts nor investments. */
-    fun isSpend(t: Transaction) = t.direction == Direction.DEBIT && !t.isTransfer && t.category != Categories.INVESTMENT
+    fun isSpend(t: Transaction) = t.direction == Direction.DEBIT && !t.isTransfer && t.category != Categories.INVESTMENT && t.category != Categories.CARD_BILL
     fun isIncome(t: Transaction) = t.direction == Direction.CREDIT && !t.isTransfer && t.category != Categories.INVESTMENT
     fun isInvestment(t: Transaction) = t.direction == Direction.DEBIT && !t.isTransfer && t.category == Categories.INVESTMENT
     /** Money coming back from investments (redemptions) is not income. */
@@ -43,7 +43,7 @@ object Insights {
     fun dailySpend(list: List<Transaction>, days: Int): LongArray {
         val arr = LongArray(days)
         for (t in list.filter(::isSpend)) {
-            val d = Calendar.getInstance().apply { timeInMillis = t.timestamp }.get(Calendar.DAY_OF_MONTH) - 1
+            val d = com.financebrain.ui.dayOfMonth(t.timestamp) - 1
             if (d in 0 until days) arr[d] += t.amountPaise
         }
         return arr

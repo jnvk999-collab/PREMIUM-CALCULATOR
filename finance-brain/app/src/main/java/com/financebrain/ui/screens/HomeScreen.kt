@@ -54,6 +54,7 @@ import com.financebrain.ui.components.categoryColor
 import com.financebrain.ui.dayOfMonth
 import com.financebrain.ui.formatDay
 import com.financebrain.ui.formatMonth
+import com.financebrain.ui.formatCycle
 import com.financebrain.ui.formatRupees
 import com.financebrain.ui.monthStart
 import com.financebrain.ui.theme.Coral
@@ -76,6 +77,8 @@ fun HomeScreen(
     onSeeAll: () -> Unit,
     onOpenBrain: () -> Unit = {},
     onSetBalance: () -> Unit = {},
+    allocation: com.financebrain.data.Allocation? = null,
+    onOpenPlanner: () -> Unit = {},
 ) {
     val now = System.currentTimeMillis()
     val isCurrentMonth = state.month == monthStart(now)
@@ -103,6 +106,27 @@ fun HomeScreen(
 
         item { HeroCard(state, onSetBalance) }
 
+        allocation?.let { a ->
+            item {
+                SectionCard {
+                    SectionTitle("This cycle's plan", "Cards & bills", onOpenPlanner)
+                    Text(
+                        (if (a.incomeIsEstimate) "Expected income " else "Income ") + formatRupees(a.incomePaise) +
+                            " − EMIs " + compactRupees(a.emiPaise) + " − card bills " + compactRupees(a.cardDuePaise) +
+                            " − fixed bills " + compactRupees(a.fixedBillsPaise) + " − invest target " + compactRupees(a.investTargetPaise),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatPill("Free to spend", compactRupees(a.freeToSpendPaise), Teal, Modifier.weight(1f))
+                        StatPill("Spent so far", compactRupees(a.spentSoFarPaise), if (a.spentSoFarPaise > a.freeToSpendPaise) Coral else Leaf, Modifier.weight(1f))
+                        StatPill(if (a.daysLeft > 0) "Per day, ${a.daysLeft}d left" else "Remaining", compactRupees(if (a.daysLeft > 0) a.perDayPaise else a.remainingPaise), if (a.remainingPaise < 0) Coral else Leaf, Modifier.weight(1f))
+                    }
+                    if (a.remainingPaise < 0) { Spacer(Modifier.height(6.dp)); Text("You are ${formatRupees(-a.remainingPaise)} past the free-to-spend line for this cycle.", style = MaterialTheme.typography.bodySmall, color = Coral) }
+                }
+            }
+        }
+
         state.report?.let { r ->
             item {
                 SectionCard {
@@ -121,7 +145,7 @@ fun HomeScreen(
         item {
             SectionCard {
                 SectionTitle("Spending by category")
-                if (state.categories.isEmpty()) EmptyHint("No spending recorded for ${formatMonth(state.month)} yet.")
+                if (state.categories.isEmpty()) EmptyHint("No spending recorded for ${formatCycle(state.month)} yet.")
                 else {
                     ShareBar(state.categories.take(8).map { categoryColor(it.category) to it.share })
                     Spacer(Modifier.height(14.dp))
@@ -195,7 +219,7 @@ private fun MonthSwitcher(month: Long, isCurrent: Boolean, onShift: (Int) -> Uni
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = { onShift(-1) }, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous month") }
-        Text(formatMonth(month), style = MaterialTheme.typography.labelLarge)
+        Text(formatCycle(month), style = MaterialTheme.typography.labelLarge)
         IconButton(onClick = { onShift(1) }, enabled = !isCurrent, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next month") }
     }
 }
@@ -245,7 +269,7 @@ private fun HeroCard(state: HomeState, onSetBalance: () -> Unit) {
                     val delta = mb.endPaise - mb.startPaise
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "${formatMonth(state.month)}: started at ${compactRupees(mb.startPaise)}, " +
+                        "${formatCycle(state.month)}: started at ${compactRupees(mb.startPaise)}, " +
                             (if (state.month == monthStart(System.currentTimeMillis())) "now " else "ended at ") + compactRupees(mb.endPaise) +
                             " (${if (delta >= 0) "+" else "-"}${compactRupees(kotlin.math.abs(delta))})",
                         style = MaterialTheme.typography.bodySmall, color = if (delta >= 0) Mint else androidx.compose.ui.graphics.Color(0xFFFFB4A8)

@@ -20,6 +20,29 @@ class TransactionRepository(private val db: AppDatabase, private val ignoredBank
     val count: Flow<Int> = db.transactions().count()
     val balanceAnchors: Flow<List<BalanceAnchor>> = db.balanceAnchors().all()
 
+    val cards: Flow<List<CreditCard>> = db.cards().all()
+    val goals: Flow<List<Goal>> = db.goals().all()
+    val receivables: Flow<List<Receivable>> = db.receivables().all()
+    val informalLoans: Flow<List<InformalLoan>> = db.informalLoans().all()
+    val controlled: Flow<List<ControlledCategory>> = db.discipline().controlled()
+    val zeroTolerance: Flow<List<ZeroTolerance>> = db.discipline().zero()
+    val disciplineEntries: Flow<List<DisciplineEntry>> = db.discipline().entries()
+
+    suspend fun saveCard(c: CreditCard) = db.cards().upsert(c)
+    suspend fun deleteCard(key: String) = db.cards().delete(key)
+    suspend fun saveGoal(g: Goal) = db.goals().upsert(g)
+    suspend fun deleteGoal(id: Long) = db.goals().delete(id)
+    suspend fun saveReceivable(r: Receivable) = db.receivables().upsert(r)
+    suspend fun deleteReceivable(id: Long) = db.receivables().delete(id)
+    suspend fun saveInformalLoan(l: InformalLoan) = db.informalLoans().upsert(l)
+    suspend fun deleteInformalLoan(id: Long) = db.informalLoans().delete(id)
+    suspend fun saveControlled(c: ControlledCategory) = db.discipline().upsertControlled(c)
+    suspend fun deleteControlled(category: String) = db.discipline().deleteControlled(category)
+    suspend fun saveZero(z: ZeroTolerance) = db.discipline().upsertZero(z)
+    suspend fun deleteZero(category: String) = db.discipline().deleteZero(category)
+    suspend fun addDisciplineEntry(e: DisciplineEntry) = db.discipline().insertEntry(e)
+    suspend fun deleteDisciplineEntry(id: Long) = db.discipline().deleteEntry(id)
+
     suspend fun setBalance(key: String, amountPaise: Long, at: Long) = db.balanceAnchors().upsert(BalanceAnchor(key, amountPaise, at))
     suspend fun clearBalance(key: String) = db.balanceAnchors().delete(key)
 
@@ -66,9 +89,14 @@ class TransactionRepository(private val db: AppDatabase, private val ignoredBank
             source = source,
             rawText = raw,
             dedupKey = key,
-            isTransfer = category == Categories.TRANSFER,
+            isTransfer = category == Categories.TRANSFER || category == Categories.CARD_BILL,
+            accountKind = p.accountKind,
         )
         val id = db.transactions().insert(t)
+        if (id != -1L && p.accountKind == "CARD" && p.accountTail != null) {
+            val ck = "${p.bank}|${p.accountTail}"
+            if (db.cards().get(ck) == null) db.cards().upsert(CreditCard(ck, "${p.bank} Card ··${p.accountTail}", p.bank, p.accountTail, null, 1))
+        }
         // An account exists only once a bank has reported a balance for it. Alerts that merely
         // mention a masked number (cards, promos that slipped through, one-off references) do not
         // create accounts.

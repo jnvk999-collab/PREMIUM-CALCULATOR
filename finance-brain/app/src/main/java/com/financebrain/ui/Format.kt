@@ -64,19 +64,47 @@ fun formatMonthShort(ts: Long): String = monthShortFmt.format(Date(ts))
 private fun sameDay(a: Calendar, b: Calendar) =
     a.get(Calendar.YEAR) == b.get(Calendar.YEAR) && a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
 
-fun monthStart(ts: Long): Long = Calendar.getInstance().apply {
-    timeInMillis = ts
-    set(Calendar.DAY_OF_MONTH, 1); set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-    set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-}.timeInMillis
+/**
+ * The app's "month" is the salary cycle: it starts on the salary day and ends the day before
+ * the next one. With salaryDay = 1 it is the calendar month.
+ */
+object Cycle {
+    @Volatile var salaryDay: Int = 1
+}
 
+private fun clampDay(cal: Calendar, day: Int) {
+    cal.set(Calendar.DAY_OF_MONTH, minOf(day, cal.getActualMaximum(Calendar.DAY_OF_MONTH)))
+}
+
+/** Start of the cycle containing [ts]. */
+fun monthStart(ts: Long): Long {
+    val sd = Cycle.salaryDay.coerceIn(1, 28)
+    val c = Calendar.getInstance().apply {
+        timeInMillis = ts
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+    }
+    if (c.get(Calendar.DAY_OF_MONTH) < sd) c.add(Calendar.MONTH, -1)
+    clampDay(c, sd)
+    return c.timeInMillis
+}
+
+/** Exclusive end of the cycle containing [ts] (= start of the next cycle). */
 fun monthEnd(ts: Long): Long = Calendar.getInstance().apply {
-    timeInMillis = monthStart(ts); add(Calendar.MONTH, 1)
+    timeInMillis = monthStart(ts); add(Calendar.MONTH, 1); clampDay(this, Cycle.salaryDay.coerceIn(1, 28))
 }.timeInMillis
 
 fun shiftMonth(ts: Long, delta: Int): Long = Calendar.getInstance().apply {
-    timeInMillis = monthStart(ts); add(Calendar.MONTH, delta)
+    timeInMillis = monthStart(ts); add(Calendar.MONTH, delta); clampDay(this, Cycle.salaryDay.coerceIn(1, 28))
 }.timeInMillis
 
-fun dayOfMonth(ts: Long): Int = Calendar.getInstance().apply { timeInMillis = ts }.get(Calendar.DAY_OF_MONTH)
-fun daysInMonth(ts: Long): Int = Calendar.getInstance().apply { timeInMillis = ts }.getActualMaximum(Calendar.DAY_OF_MONTH)
+/** 1-based day index within the cycle. */
+fun dayOfMonth(ts: Long): Int = ((ts - monthStart(ts)) / 86_400_000L).toInt() + 1
+/** Number of days in the cycle containing [ts]. */
+fun daysInMonth(ts: Long): Int = ((monthEnd(ts) - monthStart(ts) + 43_200_000L) / 86_400_000L).toInt()
+
+/** Label for a cycle: "Sep 2026" for calendar months, "5 Sep – 4 Oct" for salary cycles. */
+fun formatCycle(cycleStart: Long): String {
+    if (Cycle.salaryDay <= 1) return formatMonth(cycleStart)
+    val end = monthEnd(cycleStart) - 86_400_000L
+    return "${dayFmt.format(Date(cycleStart))} – ${dayFmt.format(Date(end))}"
+}
