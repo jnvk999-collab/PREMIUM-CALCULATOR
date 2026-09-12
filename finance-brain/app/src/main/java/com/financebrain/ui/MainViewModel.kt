@@ -301,6 +301,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val now = System.currentTimeMillis()
         val statuses = cards.map { Planning.cardStatus(it, s.allTransactions, now) }
         val debits = s.recurring.filter { it.direction == Direction.DEBIT }
+        // Infer salary day and expected income once from the salary credit, unless the user set them.
+        s.salary?.let { sal ->
+            if (!appRef.prefs.contains("salary_day") && !appRef.prefs.getBoolean("salary_day_auto", false)) {
+                val day = java.util.Calendar.getInstance().apply { timeInMillis = sal.lastAt }.get(java.util.Calendar.DAY_OF_MONTH).coerceIn(1, 28)
+                appRef.prefs.edit().putBoolean("salary_day_auto", true).apply()
+                appRef.salaryDay = day
+                _month.value = monthStart(System.currentTimeMillis())
+            }
+            if (appRef.expectedIncomePaise == 0L) appRef.expectedIncomePaise = sal.amountPaise
+        }
         val loanStatuses = hl.second.map { Planning.loanStatus(it, now) }
         // Formal loans replace the detected EMI lines with the same amount.
         val detectedLoans = s.loans.filter { d -> hl.second.none { kotlin.math.abs(it.emiPaise - d.emiPaise) < 2_000_00 } }
@@ -362,9 +372,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun restoreBackup(uri: android.net.Uri) = viewModelScope.launch { _toast.value = try { backup.restore(uri).also { _settingsTick.value++; _month.value = monthStart(System.currentTimeMillis()) } } catch (e: Exception) { "Restore failed: ${e.message}" } }
     fun importCsv(uri: android.net.Uri, bank: String) = viewModelScope.launch { _toast.value = try { backup.importCsv(uri, bank) } catch (e: Exception) { "Import failed: ${e.message}" } }
 
+    private val _uncounted = MutableStateFlow<List<com.financebrain.sms.UncountedSms>>(emptyList())
+    val uncounted: StateFlow<List<com.financebrain.sms.UncountedSms>> = _uncounted
+    fun loadUncounted() = viewModelScope.launch { _uncounted.value = try { com.financebrain.sms.Uncounted.recent(getApplication()) } catch (_: Exception) { emptyList() } }
+    fun countUncounted(u: com.financebrain.sms.UncountedSms, direction: Direction) = viewModelScope.launch {
+        val amt = u.amountPaise ?: return@launch
+        val bank = u.sender.substringBefore(" · ")
+        val p = com.financebrain.parser.ParsedTransaction(amt, direction, bank, null, "From message", "OTHER", "sms-${u.id}", null, u.at)
+        repo.ingest(p, u.body, com.financebrain.data.Source.SMS)
+        _uncounted.value = _uncounted.value.filter { it.id != u.id }
+    }
+
     fun setBalance(key: String, amountPaise: Long, at: Long) = viewModelScope.launch { repo.setBalance(key, amountPaise, at) }
     fun clearBalance(key: String) = viewModelScope.launch { repo.clearBalance(key) }
     fun shiftMonth(delta: Int) { _month.value = shiftMonth(_month.value, delta) }
+
+    /** Cheap: only unprocessed inbox rows. Called on every resume. */
+    fun scanNew() { if (_scan.value?.done == false) return; viewModelScope.launch { scanner.scan { _scan.value = it }; repo.syncCardsFromTransactions(); repo.detectInternalTransfers() } }
 
     fun scanInbox(full: Boolean = false) {
         if (_scan.value?.done == false) return

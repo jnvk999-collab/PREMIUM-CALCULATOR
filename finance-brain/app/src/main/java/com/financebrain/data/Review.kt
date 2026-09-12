@@ -17,23 +17,19 @@ sealed class ReviewItem(val id: String, val title: String, val detail: String) {
 object Review {
     fun build(all: List<Transaction>, allHistory: List<Transaction>, cycleStart: Long, accounts: List<com.financebrain.ui.AccountView>, cards: List<CreditCard>, salary: SalaryInfo?, salaryDaySet: Boolean, expectedIncomeSet: Boolean, dismissed: Set<String>): List<ReviewItem> {
         val out = ArrayList<ReviewItem>()
-        if (!salaryDaySet) out += ReviewItem.NoSalaryDay()
-        if (salary == null && !expectedIncomeSet) out += ReviewItem.NoIncome()
         // Large debits with a vague label, newest first, this cycle and last.
         val debits = all.filter { Insights.isSpend(it) }.map { it.amountPaise }.sorted()
         val median = if (debits.isNotEmpty()) debits[debits.size / 2] else 0L
         val threshold = maxOf(median * 8, 25_000_00L)
         all.filter { !it.userEdited && it.direction == Direction.DEBIT && it.amountPaise >= threshold && (it.category == Categories.OTHER || it.category == Categories.TRANSFER && !it.isTransfer) }
-            .sortedByDescending { it.timestamp }.take(5).forEach { out += ReviewItem.BigUnknown(it) }
+            .sortedByDescending { it.timestamp }.take(3).forEach { out += ReviewItem.BigUnknown(it) }
         all.filter { !it.userEdited && it.direction == Direction.CREDIT && it.amountPaise >= threshold && it.category != Categories.SALARY && !it.isTransfer }
-            .sortedByDescending { it.timestamp }.take(5).forEach { out += ReviewItem.BigCredit(it) }
+            .sortedByDescending { it.timestamp }.take(2).forEach { out += ReviewItem.BigCredit(it) }
         // Salary confirmation
         if (salary != null && !salary.confirmed) {
             all.firstOrNull { it.direction == Direction.CREDIT && Categorizer.merchantKey(it.counterparty) == Categorizer.merchantKey(salary.employer) }?.let { out += ReviewItem.ConfirmSalary(it) }
         }
-        val counts = allHistory.filter { it.accountTail != null }.groupingBy { it.bank + "|" + it.accountTail }.eachCount()
-        accounts.filter { !it.isCard && it.balancePaise == null && (counts["${it.bank}|${it.tail}"] ?: 0) >= 3 }.forEach { out += ReviewItem.NoBalance(it.bank, it.tail) }
-        cards.filter { it.limitPaise == null && (counts[it.key] ?: 0) >= 3 }.forEach { out += ReviewItem.NoLimit(it) }
-        return out.filter { it.id !in dismissed }
+        // Balances, limits, salary day and income are inferred or entered in Money/Settings; never asked here.
+        return out.filter { it.id !in dismissed }.take(3)
     }
 }

@@ -113,7 +113,7 @@ private fun App(vm: MainViewModel) {
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
-            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) { val g = granted(); if (g != smsGranted) smsGranted = g; if (g) onboarded = true }
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) { val g = granted(); if (g != smsGranted) smsGranted = g; if (g) { onboarded = true; vm.scanNew() } }
         }
         lifecycleOwner.lifecycle.addObserver(obs)
         onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
@@ -140,6 +140,10 @@ private fun App(vm: MainViewModel) {
     val ignoredAccounts by vm.ignoredAccounts.collectAsStateWithLifecycle()
     val plan by vm.plan.collectAsStateWithLifecycle()
     val toast by vm.toast.collectAsStateWithLifecycle()
+    val uncounted by vm.uncounted.collectAsStateWithLifecycle()
+    val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+    var batteryExempt by remember { mutableStateOf(pm.isIgnoringBatteryOptimizations(context.packageName)) }
+    val batteryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { batteryExempt = pm.isIgnoringBatteryOptimizations(context.packageName) }
     val gmailLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { vm.finishGmailSignIn(it.data) }
 
     var tab by rememberSaveable { mutableStateOf("home") }
@@ -234,7 +238,9 @@ private fun App(vm: MainViewModel) {
                 { backupLauncher.launch("finance-brain-backup-${java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.ENGLISH).format(java.util.Date())}.json") },
                 { restoreLauncher.launch(arrayOf("application/json", "*/*")) },
                 { csvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "*/*")) },
-                accountRefs, ignoredAccounts, vm::setAccountIgnored, state.trackingStart, vm::setTrackingStart, vm::setExpectedIncome)
+                accountRefs, ignoredAccounts, vm::setAccountIgnored, state.trackingStart, vm::setTrackingStart, vm::setExpectedIncome,
+                uncounted, vm::loadUncounted, vm::countUncounted,
+                { batteryLauncher.launch(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}"))) }, batteryExempt)
             else -> HomeScreen(state, plan, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, ::open, ::setBalanceFor, ::review)
         }
     }

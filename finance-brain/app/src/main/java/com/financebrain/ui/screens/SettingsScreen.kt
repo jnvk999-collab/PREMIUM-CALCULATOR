@@ -64,7 +64,13 @@ fun SettingsScreen(
     trackingStart: Long = 0,
     onTrackingStart: (Long) -> Unit = {},
     onExpectedIncome: (Long) -> Unit = {},
+    uncounted: List<com.financebrain.sms.UncountedSms> = emptyList(),
+    onLoadUncounted: () -> Unit = {},
+    onCountUncounted: (com.financebrain.sms.UncountedSms, com.financebrain.data.Direction) -> Unit = { _, _ -> },
+    onBatteryExemption: () -> Unit = {},
+    batteryExempt: Boolean = false,
 ) {
+    androidx.compose.runtime.LaunchedEffect(Unit) { onLoadUncounted() }
     LazyColumn(
         contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -215,6 +221,34 @@ fun SettingsScreen(
                     Spacer(Modifier.height(6.dp))
                     Text("Syncs automatically every 4 hours on Wi-Fi or data. Read-only access; emails stay on this phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+                }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Keep running in background")
+                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(if (batteryExempt) "Allowed" else "Ask Android to allow it", style = MaterialTheme.typography.bodyLarge)
+                        Text("Some phones stop apps from reading new messages in the background. Allowing this keeps alerts flowing. The app also re-checks the inbox every 30 minutes and each time it opens.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (!batteryExempt) Button(onClick = onBatteryExemption) { Text("Allow") }
+                }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Bank messages not counted · last 7 days", "Refresh", onLoadUncounted)
+                if (uncounted.isEmpty()) Text("Every bank message from the last week was understood.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                uncounted.forEach { u ->
+                    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                        Text("${u.sender} · ${com.financebrain.ui.formatDay(u.at)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(u.body, style = MaterialTheme.typography.bodySmall, maxLines = 4)
+                        if (u.amountPaise != null) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            androidx.compose.material3.TextButton(onClick = { onCountUncounted(u, com.financebrain.data.Direction.DEBIT) }) { Text("Count as spend ${com.financebrain.ui.formatRupees(u.amountPaise)}") }
+                            androidx.compose.material3.TextButton(onClick = { onCountUncounted(u, com.financebrain.data.Direction.CREDIT) }) { Text("as income") }
+                        }
+                    }
                 }
             }
         }

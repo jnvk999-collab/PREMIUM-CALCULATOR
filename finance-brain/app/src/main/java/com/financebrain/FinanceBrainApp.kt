@@ -57,6 +57,7 @@ class FinanceBrainApp : Application() {
             set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
         }.timeInMillis
         GmailSyncWorker.schedule(this)
+        com.financebrain.sms.SmsScanWorker.schedule(this)
         com.financebrain.alerts.DailyAlertWorker.schedule(this)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             repository.seedOwnerPortfolio()
