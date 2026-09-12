@@ -54,8 +54,13 @@ object BankSmsParser {
         RegexOption.IGNORE_CASE
     )
 
+    /**
+     * Account tail. Banks always mask: "A/c XX1730", "A/cX4321", "a/c **7788", "Acct XX123",
+     * "A/c ending 1730", "A/c no. XXXXXX1730". A bare number after "account" is a reference,
+     * not an account, so masking or the word "ending" is required.
+     */
     private val tailRe = Regex(
-        """(?:a/?c(?:ct|count)?|acct|card|account)\s*(?:no\.?\s*)?(?:ending\s*)?[:\s]*(?:[xX*]+|XX|\*)?[xX*]*(\d{3,6})\b""",
+        """(?:a/?c(?:ct|count)?|acct|account)\s*(?:no\.?\s*)?(?:(?:ending|linked)(?:\s+(?:with|in|to))?\s*[:\-]?\s*(\d{3,6})\b|[:\s]*(?:[xX*]{1,}|XX)\s*(\d{3,6})\b)""",
         RegexOption.IGNORE_CASE
     )
     private val balanceRe = Regex(
@@ -195,8 +200,8 @@ object BankSmsParser {
         val amount = extractAmount(text) ?: return null
         if (amount <= 0) return null
 
-        val cardTail = Regex("""\bcard\s*(?:no\.?\s*)?(?:ending\s*)?(?:in\s*)?[:\s]*[xX*]*(\d{2,6})\b""", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.takeLast(4)
-        val tail = cardTail ?: tailRe.find(text)?.groupValues?.get(1)?.takeLast(4)
+        val cardTail = Regex("""\bcard\s*(?:no\.?\s*)?(?:(?:ending|linked)(?:\s+(?:with|in|to))?\s*[:\-]?\s*(\d{2,6})\b|[:\s]*(?:[xX*]{1,}|XX)\s*(\d{2,6})\b)""", RegexOption.IGNORE_CASE).find(text)?.let { m -> (m.groupValues[1].ifEmpty { m.groupValues[2] }).takeLast(4) }
+        val tail = cardTail ?: tailRe.find(text)?.let { m -> (m.groupValues[1].ifEmpty { m.groupValues[2] }).takeLast(4) }
         val balance = balanceRe.find(text)?.groupValues?.get(1)?.let(::toPaise)
         val reference = refRe.find(text)?.groupValues?.get(1)?.takeIf { it.length in 6..24 }
 

@@ -182,6 +182,8 @@ private fun App(vm: MainViewModel) {
                 "spam" -> vm.markSpam(r.t)
             }
             is com.financebrain.data.ReviewItem.ConfirmSalary -> if (answer == "yes") vm.confirmSalary(r.t) else vm.dismissReview(r.id)
+            is com.financebrain.data.ReviewItem.NoBalance -> if (answer == "ignore") vm.setAccountIgnored("${r.bank}|${r.tail}", true) else vm.dismissReview(r.id)
+            is com.financebrain.data.ReviewItem.NoLimit -> if (answer == "ignore") vm.setAccountIgnored(r.card.key, true) else vm.dismissReview(r.id)
             else -> vm.dismissReview(r.id)
         }
     }
@@ -232,7 +234,7 @@ private fun App(vm: MainViewModel) {
                 { backupLauncher.launch("finance-brain-backup-${java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.ENGLISH).format(java.util.Date())}.json") },
                 { restoreLauncher.launch(arrayOf("application/json", "*/*")) },
                 { csvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "*/*")) },
-                accountRefs, ignoredAccounts, vm::setAccountIgnored, state.trackingStart, vm::setTrackingStart)
+                accountRefs, ignoredAccounts, vm::setAccountIgnored, state.trackingStart, vm::setTrackingStart, vm::setExpectedIncome)
             else -> HomeScreen(state, plan, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, ::open, ::setBalanceFor, ::review)
         }
     }

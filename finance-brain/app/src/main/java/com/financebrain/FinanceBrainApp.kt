@@ -29,6 +29,9 @@ class FinanceBrainApp : Application() {
     var salaryDay: Int
         get() = prefs.getInt("salary_day", 1)
         set(v) { prefs.edit().putInt("salary_day", v.coerceIn(1, 28)).apply(); com.financebrain.ui.Cycle.salaryDay = v.coerceIn(1, 28) }
+    var expectedIncomePaise: Long
+        get() = prefs.getLong("expected_income", 0L)
+        set(v) { prefs.edit().putLong("expected_income", v).apply() }
     var investTargetPct: Int
         get() = prefs.getInt("invest_pct", 20)
         set(v) { prefs.edit().putInt("invest_pct", v.coerceIn(0, 80)).apply() }
@@ -60,6 +63,7 @@ class FinanceBrainApp : Application() {
             repository.pruneAccounts()
             ignoredBanks().forEach { repository.purgeBank(it) }
             ignoredAccounts().forEach { k -> val b = k.substringBefore('|'); val t = k.substringAfter('|'); if (t.isNotBlank()) repository.purgeAccount(b, t) }
+            if (!prefs.getBoolean("reparsed_tails_v2", false)) { repository.reparseAccountTails(); prefs.edit().putBoolean("reparsed_tails_v2", true).apply() }
             repository.syncCardsFromTransactions()
             repository.detectInternalTransfers()
         }

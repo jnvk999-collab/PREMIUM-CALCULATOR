@@ -215,6 +215,23 @@ class TransactionRepository(
         return changed.size / 2
     }
 
+    /** Re-read stored alert text with the current parser and fix account tails and kinds. */
+    suspend fun reparseAccountTails(): Int {
+        var changed = 0
+        val rows = db.transactions().allNow().filter { it.source == Source.SMS && it.rawText != null }
+        val fixed = ArrayList<Transaction>()
+        for (t in rows) {
+            val p = com.financebrain.parser.BankSmsParser.parse(null, t.rawText!!, t.timestamp) ?: continue
+            if (p.accountTail != t.accountTail || p.accountKind != t.accountKind) { fixed += t.copy(accountTail = p.accountTail, accountKind = p.accountKind); changed++ }
+        }
+        if (fixed.isNotEmpty()) db.transactions().updateAll(fixed)
+        // Drop card and account rows that no longer correspond to any transaction.
+        val live = db.transactions().allNow().filter { it.accountTail != null }.map { it.bank + "|" + it.accountTail }.toSet()
+        db.cards().list().filter { it.key !in live }.forEach { db.cards().delete(it.key) }
+        db.accounts().list().filter { (it.bank + "|" + it.accountTail) !in live }.forEach { db.accounts().deleteByAccount(it.bank, it.accountTail) }
+        return changed
+    }
+
     /** Make sure every card seen in alerts has a card row, and fix rows mislabelled as bank. */
     suspend fun syncCardsFromTransactions() {
         db.transactions().relabelCards()

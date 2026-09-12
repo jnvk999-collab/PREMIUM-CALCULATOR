@@ -11,12 +11,14 @@ sealed class ReviewItem(val id: String, val title: String, val detail: String) {
     class NoBalance(val bank: String, val tail: String) : ReviewItem("bal-$bank|$tail", "Balance for $bank ··$tail", "No alert has reported it yet. Enter today's balance once.")
     class NoLimit(val card: CreditCard) : ReviewItem("lim-${card.key}", "Limit for ${card.name}", "Needed to show how much of the card is used.")
     class NoSalaryDay : ReviewItem("salary-day", "When is your salary day?", "The app counts the month from that day.")
+    class NoIncome : ReviewItem("income", "What is your monthly income?", "Used for the plan until a salary credit is seen.")
 }
 
 object Review {
-    fun build(all: List<Transaction>, cycleStart: Long, accounts: List<com.financebrain.ui.AccountView>, cards: List<CreditCard>, salary: SalaryInfo?, salaryDaySet: Boolean, dismissed: Set<String>): List<ReviewItem> {
+    fun build(all: List<Transaction>, allHistory: List<Transaction>, cycleStart: Long, accounts: List<com.financebrain.ui.AccountView>, cards: List<CreditCard>, salary: SalaryInfo?, salaryDaySet: Boolean, expectedIncomeSet: Boolean, dismissed: Set<String>): List<ReviewItem> {
         val out = ArrayList<ReviewItem>()
         if (!salaryDaySet) out += ReviewItem.NoSalaryDay()
+        if (salary == null && !expectedIncomeSet) out += ReviewItem.NoIncome()
         // Large debits with a vague label, newest first, this cycle and last.
         val debits = all.filter { Insights.isSpend(it) }.map { it.amountPaise }.sorted()
         val median = if (debits.isNotEmpty()) debits[debits.size / 2] else 0L
@@ -29,8 +31,9 @@ object Review {
         if (salary != null && !salary.confirmed) {
             all.firstOrNull { it.direction == Direction.CREDIT && Categorizer.merchantKey(it.counterparty) == Categorizer.merchantKey(salary.employer) }?.let { out += ReviewItem.ConfirmSalary(it) }
         }
-        accounts.filter { !it.isCard && it.balancePaise == null }.forEach { out += ReviewItem.NoBalance(it.bank, it.tail) }
-        cards.filter { it.limitPaise == null }.forEach { out += ReviewItem.NoLimit(it) }
+        val counts = allHistory.filter { it.accountTail != null }.groupingBy { it.bank + "|" + it.accountTail }.eachCount()
+        accounts.filter { !it.isCard && it.balancePaise == null && (counts["${it.bank}|${it.tail}"] ?: 0) >= 3 }.forEach { out += ReviewItem.NoBalance(it.bank, it.tail) }
+        cards.filter { it.limitPaise == null && (counts[it.key] ?: 0) >= 3 }.forEach { out += ReviewItem.NoLimit(it) }
         return out.filter { it.id !in dismissed }
     }
 }

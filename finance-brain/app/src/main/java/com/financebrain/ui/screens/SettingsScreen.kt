@@ -63,6 +63,7 @@ fun SettingsScreen(
     onAccountIgnored: (String, Boolean) -> Unit = { _, _ -> },
     trackingStart: Long = 0,
     onTrackingStart: (Long) -> Unit = {},
+    onExpectedIncome: (Long) -> Unit = {},
 ) {
     LazyColumn(
         contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
@@ -94,6 +95,7 @@ fun SettingsScreen(
                 var pct by androidx.compose.runtime.remember(plan.investPct) { androidx.compose.runtime.mutableStateOf(plan.investPct.toString()) }
                 var budget by androidx.compose.runtime.remember(plan.budgetPaise) { androidx.compose.runtime.mutableStateOf(if (plan.budgetPaise > 0) (plan.budgetPaise / 100).toString() else "") }
                 var name by androidx.compose.runtime.remember(plan.daughterName) { androidx.compose.runtime.mutableStateOf(plan.daughterName) }
+                var inc by androidx.compose.runtime.remember(plan.expectedIncomePaise) { androidx.compose.runtime.mutableStateOf(if (plan.expectedIncomePaise > 0) (plan.expectedIncomePaise / 100).toString() else "") }
                 Text("The app's month starts on your salary day. With day 1 it is the calendar month.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -101,7 +103,9 @@ fun SettingsScreen(
                     androidx.compose.material3.OutlinedTextField(pct, { pct = it.filter(Char::isDigit).take(2) }, label = { Text("Invest target %") }, singleLine = true, modifier = Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(8.dp))
-                androidx.compose.material3.OutlinedTextField(budget, { v -> if (v.all(Char::isDigit)) budget = v }, label = { Text("Spending budget per cycle (₹), optional") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                androidx.compose.material3.OutlinedTextField(inc, { v -> if (v.all(Char::isDigit)) inc = v }, label = { Text("Monthly income (₹), used until a salary credit is seen") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedTextField(budget, { v -> if (v.all(Char::isDigit)) budget = v }, label = { Text("Spending budget per month (₹), optional") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 androidx.compose.material3.OutlinedTextField(name, { name = it }, label = { Text("Name for the 'what it could have been' view (e.g. your daughter)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
@@ -109,6 +113,7 @@ fun SettingsScreen(
                     sd.toIntOrNull()?.let { if (it in 1..28) onSalaryDay(it) }
                     pct.toIntOrNull()?.let { if (it in 0..80) onInvestPct(it) }
                     onBudget((budget.toLongOrNull() ?: 0L) * 100)
+                    onExpectedIncome((inc.toLongOrNull() ?: 0L) * 100)
                     onDaughter(name)
                 }) { Text("Save") }
             }

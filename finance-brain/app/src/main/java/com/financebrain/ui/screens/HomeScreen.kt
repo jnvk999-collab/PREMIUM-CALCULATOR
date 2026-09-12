@@ -100,6 +100,7 @@ fun HomeScreen(
                 Text(formatRupees(left), style = MaterialTheme.typography.displaySmall, color = leftColor, fontFamily = FontFamily.Monospace)
                 Text(
                     when {
+                        a == null && income == 0L -> "Spent ${compactRupees(state.expensePaise)} so far · enter your monthly income in Settings to see what is left"
                         a == null -> "Income ${compactRupees(income)} − spent ${compactRupees(state.expensePaise)} − invested ${compactRupees(state.investedPaise)}"
                         a.daysLeft > 0 -> "${formatRupees(a.perDayPaise.coerceAtLeast(0))} a day for ${a.daysLeft} more days · spent ${compactRupees(a.spentSoFarPaise)} of ${compactRupees(a.freeToSpendPaise)}"
                         else -> "Spent ${compactRupees(a.spentSoFarPaise)} of ${compactRupees(a.freeToSpendPaise)} that was free after EMIs, bills and investing"
@@ -196,8 +197,9 @@ private fun ReviewRow(r: ReviewItem, onReview: (ReviewItem, String) -> Unit, onS
                 is ReviewItem.BigUnknown -> { Pill("Spend") { onReview(r, "spend") }; Pill("Transfer to me") { onReview(r, "transfer") }; Pill("Investment") { onReview(r, "investment") }; Pill("Not mine") { onReview(r, "spam") } }
                 is ReviewItem.BigCredit -> { Pill("Income") { onReview(r, "income") }; Pill("Salary") { onReview(r, "salary") }; Pill("Transfer to me") { onReview(r, "transfer") }; Pill("Not mine") { onReview(r, "spam") } }
                 is ReviewItem.ConfirmSalary -> { Pill("Yes, salary") { onReview(r, "yes") }; Pill("No") { onReview(r, "dismiss") } }
-                is ReviewItem.NoBalance -> { Pill("Enter balance") { onSetBalance("${r.bank}|${r.tail}") }; Pill("Skip") { onReview(r, "dismiss") } }
-                is ReviewItem.NoLimit -> { Pill("Set limit") { onOpen("money:cards") }; Pill("Skip") { onReview(r, "dismiss") } }
+                is ReviewItem.NoBalance -> { Pill("Enter balance") { onSetBalance("${r.bank}|${r.tail}") }; Pill("Not my account") { onReview(r, "ignore") }; Pill("Skip") { onReview(r, "dismiss") } }
+                is ReviewItem.NoLimit -> { Pill("Set limit") { onOpen("money:cards") }; Pill("Not my card") { onReview(r, "ignore") }; Pill("Skip") { onReview(r, "dismiss") } }
+                is ReviewItem.NoIncome -> { Pill("Enter income") { onOpen("settings") }; Pill("Skip") { onReview(r, "dismiss") } }
                 is ReviewItem.NoSalaryDay -> { Pill("Set it") { onOpen("settings") }; Pill("It's the 1st") { onReview(r, "dismiss") } }
             }
         }

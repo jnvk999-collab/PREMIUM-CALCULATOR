@@ -76,6 +76,7 @@ data class PlanState(
     val investPct: Int = 20,
     val budgetPaise: Long = 0,
     val daughterName: String = "",
+    val expectedIncomePaise: Long = 0,
 )
 
 data class HomeState(
@@ -305,19 +306,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val detectedLoans = s.loans.filter { d -> hl.second.none { kotlin.math.abs(it.emiPaise - d.emiPaise) < 2_000_00 } }
         val nw = Planning.netWorth(s.monthBalance.nowPaise, hl.first, recv, loanStatuses, statuses, loans)
         val wealth = BrainAnalyzer.wealth(nw, loanStatuses, hl.first, s.salary?.amountPaise ?: s.incomePaise)
-        val review = com.financebrain.data.Review.build(s.tracked, s.month, s.accountList, cards, s.salary, appRef.prefs.contains("salary_day"), appRef.dismissedReviews())
+        val review = com.financebrain.data.Review.build(s.tracked, s.allTransactions, s.month, s.accountList, cards, s.salary, appRef.prefs.contains("salary_day"), appRef.expectedIncomePaise > 0, appRef.dismissedReviews())
         PlanState(
             review = review,
             holdings = hl.first, loanStatuses = loanStatuses, netWorth = nw, wealthSections = wealth.first, wealthActions = wealth.second,
             cards = statuses,
-            allocation = Planning.allocation(s.tracked, s.month, now, s.salary,
+            allocation = Planning.allocation(s.tracked, s.month, now,
+                s.salary ?: appRef.expectedIncomePaise.takeIf { it > 0 }?.let { com.financebrain.data.SalaryInfo("Expected income", it, 0, 0, 0, "", false) },
                 detectedLoans + hl.second.map { com.financebrain.data.LoanInfo(it.lender, it.emiPaise, Planning.dayToTs(now, it.dueDay), 0, 0, it.type) },
                 statuses, debits, appRef.investTargetPct),
             calendar = Planning.calendar(s.month, appRef.salaryDay, s.salary, s.loans, statuses, s.recurring),
             goals = goals, receivables = recv, informalLoans = loans,
             discipline = Planning.discipline(s.tracked, s.month, d.first, d.second, d.third, now),
             controlled = d.first, zero = d.second, entries = d.third,
-            salaryDay = appRef.salaryDay, investPct = appRef.investTargetPct, budgetPaise = appRef.monthlyBudgetPaise, daughterName = appRef.daughterName,
+            salaryDay = appRef.salaryDay, investPct = appRef.investTargetPct, budgetPaise = appRef.monthlyBudgetPaise, daughterName = appRef.daughterName, expectedIncomePaise = appRef.expectedIncomePaise,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanState())
 
@@ -327,6 +329,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun markInvestment(t: Transaction) = viewModelScope.launch { repo.setCategory(t, Categories.INVESTMENT, true) }
 
     fun setSalaryDay(d: Int) { appRef.salaryDay = d; _month.value = monthStart(System.currentTimeMillis()); _settingsTick.value++ }
+    fun setExpectedIncome(paise: Long) { appRef.expectedIncomePaise = paise; _settingsTick.value++ }
     fun setInvestPct(p: Int) { appRef.investTargetPct = p; _settingsTick.value++ }
     fun setBudget(paise: Long) { appRef.monthlyBudgetPaise = paise; _settingsTick.value++ }
     fun setDaughterName(n: String) { appRef.daughterName = n; _settingsTick.value++ }

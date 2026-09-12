@@ -148,6 +148,17 @@ class BankSmsParserTest {
         assertEquals("Union Bank", BankSmsParser.identifyBank("AD-UNIONB", "Your a/c XX9012 is debited for Rs.500.00 on 12-09-26 ... -Union Bank of India"))
     }
 
+    @Test fun bareNumberAfterAccountIsNotATail() {
+        val t = p("VM-ICICIB", "ICICI Bank Acct XX123 debited for Rs 540.00 on 09-Sep-26; RAPIDO credited. UPI:524512345678.")
+        assertEquals("123", t!!.accountTail)
+        val u = p("VM-FEDBNK", "Rs 899.00 debited from your A/c XX5566 on 07SEP2026 towards UPI/525512345678/NETFLIX. Avl Bal Rs 22,110.40 -Federal Bank")
+        assertEquals("5566", u!!.accountTail)
+        val v = p("VM-FEDBNK", "Rs 899.00 debited from your account 2587 ref 525512345678 towards NETFLIX. Avl Bal Rs 22,110.40 -Federal Bank")
+        assertNull(v!!.accountTail)
+        val w = p("VM-SBIINB", "Your A/C ending 1730 Credited INR 45,000.00 on 01/09/26 -Deposit by transfer from RAMESH. Avl Bal INR 1,20,450.55 -SBI")
+        assertEquals("1730", w!!.accountTail)
+    }
+
     @Test fun indianGroupingFormatter() {
         assertEquals("₹1,20,450", com.financebrain.ui.formatRupees(12_045_055L))
         assertEquals("₹250", com.financebrain.ui.formatRupees(25_000L))
