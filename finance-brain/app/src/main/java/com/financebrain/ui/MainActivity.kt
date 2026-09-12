@@ -172,6 +172,7 @@ private fun App(vm: MainViewModel) {
         onCategory = { c, remember -> vm.setCategory(live, c, remember) },
         onNote = { vm.setNote(live, it) },
         onDelete = { vm.delete(live); selected = null },
+        onSpam = { vm.markSpam(live); selected = null },
     )
 
     if (adding) AddTransactionSheet(

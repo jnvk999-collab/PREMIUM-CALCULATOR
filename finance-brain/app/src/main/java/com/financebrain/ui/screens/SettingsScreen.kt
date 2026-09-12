@@ -127,6 +127,8 @@ fun SettingsScreen(
                     Button(onClick = { onRescan(false) }, enabled = smsGranted && scan?.done != false) { Text("Scan new messages") }
                     OutlinedButton(onClick = { onRescan(true) }, enabled = smsGranted && scan?.done != false) { Text("Full rescan") }
                 }
+                Spacer(Modifier.height(6.dp))
+                Text("Full rescan rebuilds everything from SMS with the latest parser. Cash entries and your category corrections are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {

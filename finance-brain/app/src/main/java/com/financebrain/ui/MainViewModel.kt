@@ -137,7 +137,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun scanInbox(full: Boolean = false) {
         if (_scan.value?.done == false) return
         viewModelScope.launch {
-            if (full) repo.resetSmsProgress()
+            if (full) repo.purgeSms()
             _scan.value = ScanProgress(0, 0, 0, false)
             scanner.scan { _scan.value = it }
         }
@@ -148,6 +148,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setNote(t: Transaction, note: String?) = viewModelScope.launch { repo.setNote(t, note) }
     fun delete(t: Transaction) = viewModelScope.launch { repo.delete(t) }
+    fun markSpam(t: Transaction) = viewModelScope.launch { repo.markSpam(t) }
 
     fun addManual(amountPaise: Long, direction: Direction, name: String, category: String, timestamp: Long, note: String?) =
         viewModelScope.launch { repo.addManual(amountPaise, direction, name, category, timestamp, note) }

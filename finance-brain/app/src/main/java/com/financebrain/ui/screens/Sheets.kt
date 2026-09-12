@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -57,6 +58,7 @@ fun TransactionDetailSheet(
     onCategory: (String, Boolean) -> Unit,
     onNote: (String?) -> Unit,
     onDelete: () -> Unit,
+    onSpam: () -> Unit,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var remember by remember { mutableStateOf(true) }
@@ -114,9 +116,15 @@ fun TransactionDetailSheet(
                 if (showRaw) Text(t.rawText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onDelete, colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
-                Icon(Icons.Default.Delete, null); Spacer(Modifier.width(6.dp)); Text("Delete transaction")
+            Row {
+                TextButton(onClick = onDelete, colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                    Icon(Icons.Default.Delete, null); Spacer(Modifier.width(6.dp)); Text("Delete")
+                }
+                TextButton(onClick = onSpam, colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                    Icon(Icons.Default.Block, null); Spacer(Modifier.width(6.dp)); Text("Not mine / spam")
+                }
             }
+            Text("Spam removes every entry from this sender name and blocks it in future scans.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(20.dp))
         }
     }

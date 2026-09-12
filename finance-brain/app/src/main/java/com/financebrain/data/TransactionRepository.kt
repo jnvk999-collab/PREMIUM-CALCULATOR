@@ -7,6 +7,7 @@ import java.util.Calendar
 import kotlinx.coroutines.flow.Flow
 
 class TransactionRepository(private val db: AppDatabase) {
+    companion object { const val IGNORED = "__ignored__" }
 
     val transactions: Flow<List<Transaction>> = db.transactions().all()
     val accounts: Flow<List<Account>> = db.accounts().all()
@@ -32,6 +33,7 @@ class TransactionRepository(private val db: AppDatabase) {
         val key = dedupKey(p)
         val counterparty = p.counterparty
         val rule = db.merchantRules().get(Categorizer.merchantKey(counterparty))
+        if (rule?.category == IGNORED) return false
         val category = rule?.category ?: Categorizer.categorize(counterparty, p.channel, p.direction, raw)
         val t = Transaction(
             amountPaise = p.amountPaise,
@@ -95,6 +97,18 @@ class TransactionRepository(private val db: AppDatabase) {
             db.merchantRules().upsert(MerchantRule(Categorizer.merchantKey(t.counterparty), category))
             db.transactions().recategorizeMerchant(t.counterparty, category)
         }
+    }
+
+    /** "Not mine / spam": delete it and never import this counterparty again. */
+    suspend fun markSpam(t: Transaction) {
+        db.merchantRules().upsert(MerchantRule(Categorizer.merchantKey(t.counterparty), IGNORED))
+        db.transactions().deleteByCounterparty(t.counterparty)
+    }
+
+    /** Full rescan: drop everything that came from SMS (manual entries and rules survive). */
+    suspend fun purgeSms() {
+        db.transactions().deleteBySource(Source.SMS)
+        db.processedSms().clear()
     }
 
     suspend fun setNote(t: Transaction, note: String?) = db.transactions().update(t.copy(note = note))

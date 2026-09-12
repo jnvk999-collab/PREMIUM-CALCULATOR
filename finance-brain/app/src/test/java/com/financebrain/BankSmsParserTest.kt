@@ -97,6 +97,25 @@ class BankSmsParserTest {
         assertNull(p("AM-DELHVR", "Your order is out for delivery. Rs 340 will be collected."))
     }
 
+    @Test fun rejectsPromotionalTraffic() {
+        // DLT promotional header
+        assertNull(p("VM-HDFCBK-P", "Rs.500 debited? No! Get Rs.500 cashback on your HDFC Bank Card x1234 when you spend Rs.5000 at Amazon. T&C apply."))
+        // Phone-number sender
+        assertNull(p("+919876543210", "Your A/c X1234 debited Rs.5000 for loan. Call now to apply for personal loan up to 5 lakh -SBI"))
+        // Marketing words plus a link, even with an account tail
+        assertNull(p("VM-ICICIB", "Dear Customer, get a pre-approved personal loan on your ICICI Bank Acct XX123. Rs 5,00,000 credited in 3 sec. Apply now: https://icici.bank/xyz T&C"))
+        // No account, reference or balance at all
+        assertNull(p("AD-SBIPSG", "Rs.2000 credited as cashback! Shop with SBI Card and earn rewards. Offer valid till 30 Sep."))
+        // Card promo with amount and tail but sales language
+        assertNull(p("VM-HDFCBK", "Spend Rs.3000 on HDFC Bank Card x9012 and get 10% off up to Rs.500 at Flipkart Big Billion Days. Offer till 30-09-26. T&C apply."))
+    }
+
+    @Test fun keepsGenuineAlertWithNotYouLink() {
+        // HDFC genuine alerts carry a ref and a "Not You?" line; they must survive.
+        val t = p("VM-HDFCBK", "Sent Rs.320.00 From HDFC Bank A/C *7788 To BIG BAZAAR On 10/09/26 Ref 525012345678 Not You? Call 18002586161/SMS BLOCK UPI to 7308080808")
+        assertNotNull(t)
+    }
+
     @Test fun atmWithdrawal() {
         val t = p("VM-SBIINB", "Dear Customer, Rs.5000.00 withdrawn at SBI ATM S1ABC123 from A/cX4321 on 04Sep26. Avl Bal Rs.98,000.00 -SBI")
         assertNotNull(t); t!!

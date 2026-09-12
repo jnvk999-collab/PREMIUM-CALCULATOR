@@ -25,6 +25,26 @@ object BankSmsParser {
         RegexOption.IGNORE_CASE
     )
 
+    /** Marketing language. A real alert never needs to sell anything. */
+    private val promoRe = Regex(
+        """\b(offers?|discount|voucher|coupon|cashback|reward points?|earn up to|get up to|save up to|up to \d+%|\d+% off|flat \d+|t&c|tnc|t and c|terms (?:and|&) conditions|hurry|limited (?:period|time)|last (?:day|chance)|apply|eligible|avail (?:now|the|this|your|instant|loan|offer)|instant loan|personal loan|loan of|credit limit|pre-?qualified|upgrade|download|click|visit|register|subscribe|refer|invite|gift|sale|festive|bonanza|lucky|jackpot|winner|free|zero (?:cost|fee)|no cost emi|emi starting|interest rate|fd rates|insurance plan|policy|mutual fund|invest now|kyc|update your|link your|verify your|app now)\b""",
+        RegexOption.IGNORE_CASE
+    )
+    private val urlRe = Regex("""(https?://|www\.|bit\.ly|\b[a-z0-9-]+\.(?:com|in|co|io|ly|me|net|org)/\S*)""", RegexOption.IGNORE_CASE)
+
+    /**
+     * Sender hygiene. Indian DLT headers look like "VM-HDFCBK-S": the suffix marks the
+     * category (S service, T transactional, P promotional, G government). Promotional
+     * traffic and plain phone numbers are never bank alerts.
+     */
+    fun isPromotionalSender(sender: String?): Boolean {
+        val s = (sender ?: "").trim().uppercase()
+        if (s.isEmpty()) return false
+        if (Regex("""^\+?\d{9,}$""").matches(s)) return true          // 10-digit numbers = people or spammers
+        if (Regex("""-P$""").containsMatchIn(s)) return true            // DLT promotional category
+        return false
+    }
+
     private val debitRe = Regex(
         """\b(debited|debit(?:ed)? by|sent|paid|spent|withdrawn|purchase|txn of|transferred|payment of)\b""",
         RegexOption.IGNORE_CASE
@@ -93,6 +113,7 @@ object BankSmsParser {
 
     fun parse(sender: String?, body: String, receivedAt: Long): ParsedTransaction? {
         val text = body.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
+        if (isPromotionalSender(sender)) return null
         val bank = identifyBank(sender, text) ?: return null
         if (ignoreRe.containsMatchIn(text)) return null
 
@@ -103,6 +124,14 @@ object BankSmsParser {
         val tail = tailRe.find(text)?.groupValues?.get(1)?.takeLast(4)
         val balance = balanceRe.find(text)?.groupValues?.get(1)?.let(::toPaise)
         val reference = refRe.find(text)?.groupValues?.get(1)?.takeIf { it.length in 6..24 }
+
+        // A genuine alert identifies the account, a reference or a balance. Marketing does
+        // not, and marketing with a link or sales words is rejected outright.
+        val anchored = tail != null || reference != null || balance != null
+        if (!anchored) return null
+        val promoHits = promoRe.findAll(text).count()
+        if (promoHits >= 2 || (promoHits >= 1 && urlRe.containsMatchIn(text))) return null
+        if (urlRe.containsMatchIn(text) && reference == null && balance == null) return null
         val channel = detectChannel(text)
         val isCard = Regex("""\bcard\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) &&
             !Regex("""\b(a/?c|account)\b""", RegexOption.IGNORE_CASE).containsMatchIn(text)

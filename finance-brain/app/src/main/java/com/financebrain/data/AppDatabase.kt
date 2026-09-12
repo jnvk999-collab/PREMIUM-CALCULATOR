@@ -31,6 +31,12 @@ interface TransactionDao {
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun delete(id: Long)
 
+    @Query("DELETE FROM transactions WHERE counterparty = :counterparty")
+    suspend fun deleteByCounterparty(counterparty: String)
+
+    @Query("DELETE FROM transactions WHERE source = :source")
+    suspend fun deleteBySource(source: Source)
+
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
     fun all(): Flow<List<Transaction>>
 
