@@ -18,6 +18,9 @@ class FinanceBrainApp : Application() {
     fun setIgnoredAccounts(v: Set<String>) { prefs.edit().putStringSet("ignored_accounts", v).apply() }
     val repository: TransactionRepository by lazy { TransactionRepository(database, { ignoredBanks() }, { ignoredAccounts() }) }
 
+    fun dismissedReviews(): Set<String> = prefs.getStringSet("dismissed_reviews", emptySet()) ?: emptySet()
+    fun dismissReview(id: String) { prefs.edit().putStringSet("dismissed_reviews", dismissedReviews() + id).apply() }
+
     var salaryDay: Int
         get() = prefs.getInt("salary_day", 1)
         set(v) { prefs.edit().putInt("salary_day", v.coerceIn(1, 28)).apply(); com.financebrain.ui.Cycle.salaryDay = v.coerceIn(1, 28) }

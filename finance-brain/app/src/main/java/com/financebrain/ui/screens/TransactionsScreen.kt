@@ -38,7 +38,7 @@ import com.financebrain.ui.formatDay
 import com.financebrain.ui.formatRupees
 
 @Composable
-fun TransactionsScreen(all: List<Transaction>, padding: PaddingValues, onOpen: (Transaction) -> Unit) {
+fun TransactionsScreen(all: List<Transaction>, padding: PaddingValues, onOpen: (Transaction) -> Unit, showHeader: Boolean = true) {
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf("All") }
     val banks = remember(all) { all.map { it.bank }.distinct().sorted() }
@@ -61,9 +61,7 @@ fun TransactionsScreen(all: List<Transaction>, padding: PaddingValues, onOpen: (
 
     Column(Modifier.padding(top = padding.calculateTopPadding())) {
         Column(Modifier.padding(horizontal = 16.dp)) {
-            Spacer(Modifier.height(8.dp))
-            Text("Transactions", style = MaterialTheme.typography.headlineSmall)
-            Spacer(Modifier.height(10.dp))
+            if (showHeader) { Spacer(Modifier.height(8.dp)); Text("Transactions", style = MaterialTheme.typography.headlineSmall); Spacer(Modifier.height(10.dp)) }
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
                 placeholder = { Text("Search merchant, category, amount") },

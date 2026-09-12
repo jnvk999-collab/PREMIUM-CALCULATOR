@@ -84,7 +84,7 @@ fun InsightsScreen(state: HomeState, plan: com.financebrain.ui.PlanState, vm: co
 }
 
 // ---------------------------------------------------------------- Trends
-private fun LazyListScope.trends(state: HomeState) {
+fun LazyListScope.trends(state: HomeState) {
     val months = state.months.takeLast(6)
     val prev = months.dropLast(1).lastOrNull()
     val cur = months.lastOrNull()
@@ -202,7 +202,7 @@ private fun LazyListScope.trends(state: HomeState) {
 }
 
 // ---------------------------------------------------------------- Recurring
-private fun LazyListScope.recurring(state: HomeState) {
+fun LazyListScope.recurring(state: HomeState) {
     item {
         var showIncome by rememberSaveable { mutableStateOf(false) }
         val debits = state.recurring.filter { it.direction == Direction.DEBIT }
@@ -243,7 +243,7 @@ private fun RecurringRow(r: Recurring) {
 }
 
 // ---------------------------------------------------------------- Investments
-private fun LazyListScope.investments(state: HomeState) {
+fun LazyListScope.investments(state: HomeState) {
     val lines = state.investments
     val invested = lines.sumOf { it.investedPaise }
     val redeemed = lines.sumOf { it.redeemedPaise }
@@ -289,7 +289,7 @@ private fun LazyListScope.investments(state: HomeState) {
 }
 
 // ---------------------------------------------------------------- Loans & Salary
-private fun LazyListScope.loansAndSalary(state: HomeState) {
+fun LazyListScope.loansAndSalary(state: HomeState) {
     item {
         SectionCard {
             SectionTitle("Salary")

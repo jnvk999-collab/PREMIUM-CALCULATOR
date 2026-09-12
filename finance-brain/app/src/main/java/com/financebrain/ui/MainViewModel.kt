@@ -9,6 +9,7 @@ import com.financebrain.brain.BrainAsk
 import com.financebrain.brain.BrainReport
 import com.financebrain.brain.BrainSettings
 import com.financebrain.data.Account
+import com.financebrain.data.Categories
 import com.financebrain.ui.formatRupees
 import com.financebrain.data.Allocation
 import com.financebrain.data.CalendarEvent
@@ -70,6 +71,7 @@ data class PlanState(
     val netWorth: NetWorth? = null,
     val wealthSections: List<com.financebrain.brain.BrainSection> = emptyList(),
     val wealthActions: List<String> = emptyList(),
+    val review: List<com.financebrain.data.ReviewItem> = emptyList(),
     val salaryDay: Int = 1,
     val investPct: Int = 20,
     val budgetPaise: Long = 0,
@@ -289,7 +291,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val detectedLoans = s.loans.filter { d -> hl.second.none { kotlin.math.abs(it.emiPaise - d.emiPaise) < 2_000_00 } }
         val nw = Planning.netWorth(s.monthBalance.nowPaise, hl.first, recv, loanStatuses, statuses, loans)
         val wealth = BrainAnalyzer.wealth(nw, loanStatuses, hl.first, s.salary?.amountPaise ?: s.incomePaise)
+        val review = com.financebrain.data.Review.build(s.allTransactions, s.month, s.accountList, cards, s.salary, appRef.prefs.contains("salary_day"), appRef.dismissedReviews())
         PlanState(
+            review = review,
             holdings = hl.first, loanStatuses = loanStatuses, netWorth = nw, wealthSections = wealth.first, wealthActions = wealth.second,
             cards = statuses,
             allocation = Planning.allocation(s.allTransactions, s.month, now, s.salary,
@@ -302,6 +306,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             salaryDay = appRef.salaryDay, investPct = appRef.investTargetPct, budgetPaise = appRef.monthlyBudgetPaise, daughterName = appRef.daughterName,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanState())
+
+    fun dismissReview(id: String) { appRef.dismissReview(id); _settingsTick.value++ }
+    fun confirmSalary(t: Transaction) = viewModelScope.launch { repo.setCategory(t, Categories.SALARY, true) }
+    fun markTransfer(t: Transaction) = viewModelScope.launch { repo.setCategory(t, Categories.TRANSFER, false) }
+    fun markInvestment(t: Transaction) = viewModelScope.launch { repo.setCategory(t, Categories.INVESTMENT, true) }
 
     fun setSalaryDay(d: Int) { appRef.salaryDay = d; _month.value = monthStart(System.currentTimeMillis()); _settingsTick.value++ }
     fun setInvestPct(p: Int) { appRef.investTargetPct = p; _settingsTick.value++ }

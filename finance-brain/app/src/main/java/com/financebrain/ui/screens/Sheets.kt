@@ -189,16 +189,17 @@ fun SetBalanceSheet(
     onDismiss: () -> Unit,
     onSave: (key: String, amountPaise: Long) -> Unit,
     onClear: (key: String) -> Unit,
+    initialTarget: String? = null,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var target by remember { mutableStateOf("ALL") }
+    var target by remember { mutableStateOf(initialTarget ?: "ALL") }
     var amount by remember { mutableStateOf("") }
     val paise = BankSmsParser.toPaise(amount) ?: 0L
     val existing = anchors.firstOrNull { it.key == target }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
         Column(Modifier.padding(horizontal = 20.dp).verticalScroll(rememberScrollState()).navigationBarsPadding()) {
-            Text("Set current balance", style = MaterialTheme.typography.titleLarge)
+            Text("Update balance", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(6.dp))
             Text(
                 "Type what your bank shows right now. From here the app keeps it running: every credit adds, every debit subtracts.",

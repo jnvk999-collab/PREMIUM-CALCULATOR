@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -74,13 +75,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-/** FinanceOS-style tab strip: emoji + label, scrolls horizontally. */
+/** Five tabs. Each is one kind of thing, in lists. Settings lives behind the gear on Home. */
 private data class Tab(val key: String, val emoji: String, val label: String)
-private val TABS = listOf(
-    Tab("home", "🏠", "Home"), Tab("activity", "💸", "Activity"), Tab("cards", "💳", "Cards"), Tab("emis", "🔄", "EMIs"),
-    Tab("invest", "📈", "Invest"), Tab("goals", "🎯", "Goals"), Tab("discipline", "🛡️", "Discipline"), Tab("calendar", "📅", "Calendar"),
-    Tab("recurring", "🔁", "Recurring"), Tab("trends", "📊", "Trends"), Tab("brain", "🧠", "Brain"), Tab("settings", "⚙️", "Settings"),
-)
+private val TABS = listOf(Tab("home", "🏠", "Home"), Tab("spend", "💸", "Spend"), Tab("money", "💼", "Money"), Tab("plan", "📅", "Plan"), Tab("brain", "🧠", "Brain"))
 
 private val SMS_PERMISSIONS = arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)
 
@@ -146,9 +143,13 @@ private fun App(vm: MainViewModel) {
     val gmailLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { vm.finishGmailSignIn(it.data) }
 
     var tab by rememberSaveable { mutableStateOf("home") }
+    var spendSection by rememberSaveable { mutableStateOf("activity") }
+    var moneySection by rememberSaveable { mutableStateOf("accounts") }
+    var planSection by rememberSaveable { mutableStateOf("budget") }
     var selected by remember { mutableStateOf<Transaction?>(null) }
     var adding by remember { mutableStateOf(false) }
     var settingBalance by remember { mutableStateOf(false) }
+    var balanceTarget by remember { mutableStateOf<String?>(null) }
     val app = context.applicationContext as com.financebrain.FinanceBrainApp
     var alertEnabled by remember { mutableStateOf(app.dailyAlertEnabled) }
     var alertHour by remember { mutableStateOf(app.dailyAlertHour) }
@@ -160,38 +161,43 @@ private fun App(vm: MainViewModel) {
     LaunchedEffect(toast) { toast?.let { snackbar.showSnackbar(it); vm.clearToast() } }
 
     val live = selected?.let { s -> state.allTransactions.firstOrNull { it.id == s.id } }
-    fun open(key: String) { if (key == "set-balance") settingBalance = true else tab = key }
+    fun open(key: String) {
+        val (t, sec) = key.split(":").let { it[0] to it.getOrNull(1) }
+        when (t) { "spend" -> sec?.let { spendSection = it }; "money" -> sec?.let { moneySection = it }; "plan" -> sec?.let { planSection = it } }
+        tab = t
+    }
+    fun setBalanceFor(target: String?) { balanceTarget = target; settingBalance = true }
+    fun review(r: com.financebrain.data.ReviewItem, answer: String) {
+        when (r) {
+            is com.financebrain.data.ReviewItem.BigUnknown -> when (answer) {
+                "spend" -> selected = r.t
+                "transfer" -> vm.markTransfer(r.t)
+                "investment" -> vm.markInvestment(r.t)
+                "spam" -> vm.markSpam(r.t)
+            }
+            is com.financebrain.data.ReviewItem.ConfirmSalary -> if (answer == "yes") vm.confirmSalary(r.t) else vm.dismissReview(r.id)
+            else -> vm.dismissReview(r.id)
+        }
+    }
 
     Scaffold(
         containerColor = p.bg,
         snackbarHost = { androidx.compose.material3.SnackbarHost(snackbar) },
-        topBar = {
-            Column(Modifier.background(p.bg).statusBarsPadding()) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(28.dp).background(p.s1, RoundedCornerShape(8.dp)).border(1.dp, p.gold.copy(alpha = 0.4f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                        Text("₹", color = p.gold, fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Text("Finance Brain", style = MaterialTheme.typography.titleMedium, color = p.gold)
-                    Spacer(Modifier.weight(1f))
-                    Text("${state.totalCount} txns", style = MaterialTheme.typography.labelSmall, color = p.t2)
-                }
-                LazyRow(contentPadding = PaddingValues(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items(TABS) { t ->
-                        val sel = tab == t.key
+        bottomBar = {
+            Column(Modifier.background(p.s1)) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(p.bd))
+                Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp).navigationBarsPadding(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    TABS.forEach { t ->
+                        val sel = tab == t.key || (tab == "settings" && t.key == "home")
                         Column(
-                            Modifier.clickable { tab = t.key }
-                                .background(if (sel) p.gold.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(10.dp))
-                                .border(1.dp, if (sel) p.gold.copy(alpha = 0.5f) else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(10.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            Modifier.clickable { tab = t.key }.background(if (sel) p.gold.copy(alpha = 0.14f) else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(12.dp)).padding(horizontal = 14.dp, vertical = 6.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(t.emoji, style = MaterialTheme.typography.bodyMedium)
+                            Text(t.emoji, style = MaterialTheme.typography.bodyLarge)
                             Text(t.label, style = MaterialTheme.typography.labelSmall, color = if (sel) p.gold else p.t2)
                         }
                     }
                 }
-                Box(Modifier.fillMaxWidth().height(1.dp).background(p.bd))
             }
         },
         floatingActionButton = {
@@ -201,8 +207,10 @@ private fun App(vm: MainViewModel) {
         }
     ) { padding ->
         when (tab) {
-            "home" -> HomeScreen(state, plan, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, ::open, { settingBalance = true })
-            "activity" -> TransactionsScreen(state.allTransactions, padding) { selected = it }
+            "home" -> HomeScreen(state, plan, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, ::open, ::setBalanceFor, ::review)
+            "spend" -> com.financebrain.ui.screens.SpendScreen(state, padding, spendSection, { spendSection = it }) { selected = it }
+            "money" -> com.financebrain.ui.screens.MoneyScreen(state, plan, vm, padding, moneySection, { moneySection = it }, ::setBalanceFor)
+            "plan" -> com.financebrain.ui.screens.PlanScreen(state, plan, vm, padding, planSection, { planSection = it }) { tab = "settings" }
             "brain" -> BrainScreen(state.report, state.month, chat, hasApiKey, padding, plan.wealthSections, plan.wealthActions, vm::ask) { tab = "settings" }
             "settings" -> SettingsScreen(state, scan, smsGranted, padding, { requestSms() }, { openAppSettings() }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate,
                 gmail, gmailProgress, gmailClientId, gmailError, vm::setGmailClientId,
@@ -219,7 +227,7 @@ private fun App(vm: MainViewModel) {
                 { restoreLauncher.launch(arrayOf("application/json", "*/*")) },
                 { csvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "*/*")) },
                 accountRefs, ignoredAccounts, vm::setAccountIgnored)
-            else -> InsightsScreen(state, plan, vm, padding, tab) { tab = "settings" }
+            else -> HomeScreen(state, plan, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, ::open, ::setBalanceFor, ::review)
         }
     }
 
@@ -235,6 +243,7 @@ private fun App(vm: MainViewModel) {
         onDismiss = { settingBalance = false },
         onSave = { key, paise -> vm.setBalance(key, paise, System.currentTimeMillis()); settingBalance = false },
         onClear = { key -> vm.clearBalance(key); settingBalance = false },
+        initialTarget = balanceTarget,
     )
     if (adding) AddTransactionSheet(
         onDismiss = { adding = false },
