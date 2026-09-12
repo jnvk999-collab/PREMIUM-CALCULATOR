@@ -104,6 +104,15 @@ object BankSmsParser {
             s.contains("FEDBNK") || s.contains("FEDERAL") || b.contains("FEDERAL BANK") ||
                 b.contains("-FEDERAL") || b.contains("FEDBNK") -> "Federal Bank"
             s.contains("PHONPE") || s.contains("PHONEPE") || b.contains("PHONEPE") -> "PhonePe"
+            s.contains("GROWW") || b.contains("GROWW") -> "Groww"
+            s.contains("ZERODH") || b.contains("ZERODHA") || b.contains("COIN BY ZERODHA") -> "Zerodha"
+            s.contains("UPSTOX") || b.contains("UPSTOX") -> "Upstox"
+            s.contains("KUVERA") || b.contains("KUVERA") -> "Kuvera"
+            s.contains("ETMONY") || b.contains("ETMONEY") -> "ETMoney"
+            s.contains("INDMNY") || b.contains("INDMONEY") -> "INDmoney"
+            b.contains("BSE STAR") || b.contains("BSESTAR") || b.contains("BSE LTD") || b.contains("BSE LIMITED") -> "BSE StAR MF"
+            b.contains("NSE CLEARING") || b.contains("NSCCL") -> "NSE Clearing"
+            b.contains("INDIAN CLEARING") || b.contains("ICCL") -> "ICCL"
             s.contains("AXIS") || b.contains("AXIS BANK") -> "Axis Bank"
             s.contains("KOTAK") || b.contains("KOTAK") -> "Kotak"
             s.contains("PAYTM") || b.contains("PAYTM") -> "Paytm"
@@ -111,10 +120,54 @@ object BankSmsParser {
         }
     }
 
+    val investmentPlatforms = setOf("Groww", "Zerodha", "Upstox", "Kuvera", "ETMoney", "INDmoney", "BSE StAR MF", "NSE Clearing", "ICCL")
+
+    private val platformInvestRe = Regex(
+        """(?:sip|order|investment|purchase|lumpsum|lump sum|buy order|mandate)\b.{0,80}?(?:of|for|worth|amount)?\s*(?:INR|Rs\.?|₹)\s*([0-9][0-9,]*(?:\.\d{1,2})?)""",
+        RegexOption.IGNORE_CASE
+    )
+    private val platformAmountFirstRe = Regex(
+        """(?:INR|Rs\.?|₹)\s*([0-9][0-9,]*(?:\.\d{1,2})?).{0,60}?\b(?:invested|sip|order|units|processed|executed|placed|successful|debited|deducted)\b""",
+        RegexOption.IGNORE_CASE
+    )
+    private val fundRe = Regex(
+        """\b(?:in|for|of)\s+([A-Z][A-Za-z0-9&.' -]{3,60}(?:Fund|Cap|Index|ETF|Gold|Liquid|Bond|Equity|Debt|Hybrid|Flexi|Bluechip|Nifty|Sensex|Growth|Direct|Plan|Scheme|Deposit|FD))\b"""
+    )
+    private val platformRedeemRe = Regex("""\b(redeem|redemption|withdraw(?:al|n)?|sold|sell order|credited to your bank|payout)\b""", RegexOption.IGNORE_CASE)
+    private val platformIgnoreRe = Regex("""\b(otp|reminder|upcoming|failed|rejected|cancell?ed|kyc|nominee|offer|refer|login|password|verify|market update|nav update|portfolio update|weekly|newsletter|is due|are due)\b""", RegexOption.IGNORE_CASE)
+    /** A confirmation says something already happened. */
+    private val platformDoneRe = Regex("""\b(processed|successful(?:ly)?|executed|completed|invested|allotted|placed|confirmed|debited|deducted|received|credited)\b""", RegexOption.IGNORE_CASE)
+
+    /** Confirmations from investment apps: SIP processed, order executed, lumpsum invested. */
+    private fun parsePlatform(platform: String, text: String, receivedAt: Long): ParsedTransaction? {
+        if (platformIgnoreRe.containsMatchIn(text)) return null
+        if (!platformDoneRe.containsMatchIn(text)) return null
+        val amountRaw = platformInvestRe.find(text)?.groupValues?.get(1) ?: platformAmountFirstRe.find(text)?.groupValues?.get(1) ?: return null
+        val amount = toPaise(amountRaw) ?: return null
+        if (amount <= 0) return null
+        val redemption = platformRedeemRe.containsMatchIn(text)
+        val fund = fundRe.find(text)?.groupValues?.get(1)?.trim()
+        val counterparty = if (fund != null) "$platform · $fund" else platform
+        val ref = refRe.find(text)?.groupValues?.get(1)?.takeIf { it.length in 6..24 }
+        return ParsedTransaction(
+            amountPaise = amount,
+            direction = if (redemption) Direction.CREDIT else Direction.DEBIT,
+            bank = platform,
+            accountTail = null,
+            counterparty = counterparty,
+            channel = "INVEST",
+            reference = ref,
+            balancePaise = null,
+            timestamp = extractDate(text) ?: receivedAt,
+            accountKind = "INVEST",
+        )
+    }
+
     fun parse(sender: String?, body: String, receivedAt: Long): ParsedTransaction? {
         val text = body.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
         if (isPromotionalSender(sender)) return null
         val bank = identifyBank(sender, text) ?: return null
+        if (bank in investmentPlatforms) return parsePlatform(bank, text, receivedAt)
         if (ignoreRe.containsMatchIn(text)) return null
 
         val direction = detectDirection(text) ?: return null

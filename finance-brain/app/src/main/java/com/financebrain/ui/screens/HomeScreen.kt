@@ -230,6 +230,17 @@ private fun HeroCard(state: HomeState) {
                     if (state.accounts.isEmpty()) "Balances appear once a bank alert reports one" else "across ${state.accounts.size} account${if (state.accounts.size > 1) "s" else ""}",
                     style = MaterialTheme.typography.bodySmall, color = Mint.copy(alpha = 0.85f)
                 )
+                val mb = state.monthBalance
+                if (mb.startPaise != null && mb.endPaise != null) {
+                    val delta = mb.endPaise - mb.startPaise
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "${formatMonth(state.month)}: started at ${compactRupees(mb.startPaise)}, " +
+                            (if (state.month == monthStart(System.currentTimeMillis())) "now " else "ended at ") + compactRupees(mb.endPaise) +
+                            " (${if (delta >= 0) "+" else "-"}${compactRupees(kotlin.math.abs(delta))})",
+                        style = MaterialTheme.typography.bodySmall, color = if (delta >= 0) Mint else androidx.compose.ui.graphics.Color(0xFFFFB4A8)
+                    )
+                }
                 Spacer(Modifier.height(18.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     HeroStat("Income", state.incomePaise, Modifier.weight(1f))

@@ -12,6 +12,10 @@ import com.financebrain.data.Account
 import com.financebrain.data.CategoryTotal
 import com.financebrain.data.Direction
 import com.financebrain.data.Insights
+import com.financebrain.data.InvestmentLine
+import com.financebrain.data.LoanInfo
+import com.financebrain.data.MonthBalance
+import com.financebrain.data.SalaryInfo
 import com.financebrain.data.MonthSummary
 import com.financebrain.data.Recurring
 import com.financebrain.data.Transaction
@@ -44,6 +48,10 @@ data class HomeState(
     val topMerchants: List<Pair<String, Long>> = emptyList(),
     val totalCount: Int = 0,
     val report: BrainReport? = null,
+    val salary: SalaryInfo? = null,
+    val loans: List<LoanInfo> = emptyList(),
+    val investments: List<InvestmentLine> = emptyList(),
+    val monthBalance: MonthBalance = MonthBalance(null, null, null),
 ) {
     val totalBalancePaise: Long get() = accounts.sumOf { it.balancePaise ?: 0 }
     val savedPaise: Long get() = incomePaise - expensePaise - investedPaise
@@ -162,6 +170,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             topMerchants = Insights.topMerchants(inMonth),
             totalCount = all.size,
             report = if (all.isEmpty()) null else BrainAnalyzer.analyze(all, months, m, recurring, now),
+            salary = Insights.salary(all, recurring.filter { it.direction == Direction.CREDIT }, now),
+            loans = Insights.loans(all, recurring.filter { it.direction == Direction.DEBIT }, now),
+            investments = Insights.investments(all, recurring.filter { it.direction == Direction.DEBIT }),
+            monthBalance = Insights.monthBalance(all, m, end, now),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState(_month.value))
 

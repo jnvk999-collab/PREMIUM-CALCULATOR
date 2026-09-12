@@ -19,10 +19,16 @@ class TransactionRepository(private val db: AppDatabase) {
     suspend fun ingest(p: ParsedTransaction, raw: String, source: Source): Boolean {
         // An email for a payment the SMS already captured: keep the SMS row, but borrow the
         // merchant name if the SMS only had a generic one.
-        if (source != Source.SMS) {
+        val platformConfirmation = p.accountKind == "INVEST"
+        if (source != Source.SMS || platformConfirmation) {
             val twin = db.transactions().similar(p.amountPaise, p.direction, p.timestamp - 36 * 3_600_000L, p.timestamp + 36 * 3_600_000L)
-                .firstOrNull { it.source != source }
+                .firstOrNull { (it.source != source || platformConfirmation) && it.bank != p.bank }
             if (twin != null) {
+                // The bank already recorded the debit: label it with the fund/platform and file it as an investment.
+                if (platformConfirmation && !twin.userEdited) {
+                    db.transactions().update(twin.copy(counterparty = p.counterparty, category = Categories.INVESTMENT, isTransfer = false))
+                    return false
+                }
                 if (twin.counterparty.endsWith("transaction") || twin.counterparty == "Bank Transfer") {
                     val cat = Categorizer.categorize(p.counterparty, twin.channel, twin.direction, raw)
                     db.transactions().update(twin.copy(counterparty = p.counterparty, category = if (twin.userEdited) twin.category else cat))

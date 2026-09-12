@@ -17,7 +17,7 @@ object Categorizer {
         Regex("""netflix|spotify|hotstar|disney|prime video|youtube|sony liv|zee5|jiocinema|bookmyshow|pvr|inox|cinepolis|gaana|wynk|apple\.com|google play|steam|playstation|xbox""") to Categories.ENTERTAINMENT,
         Regex("""apollo|pharm|medplus|netmeds|1mg|pharmeasy|hospital|clinic|diagnostic|lab|doctor|dental|practo|medical|health""") to Categories.HEALTH,
         Regex("""\bemi\b|loan|bajaj fin|hdfc fin|home credit|lending|kreditbee|moneyview|navi|paysense|cred\b|credit card payment|card bill""") to Categories.EMI,
-        Regex("""\bsip\b|zerodha|groww|upstox|kuvera|\bcoin\b|mutual fund|\bmf\b|\bamc\b|\bnps\b|\bppf\b|etmoney|paytm money|angel one|angelone|icici direct|iciciprulife|hdfc sec|hdfc life|kotak sec|smallcase|indmoney|\brd\b|recurring deposit|\bfd\b|fixed deposit|term deposit|sbi mf|hdfc mf|icici pru|axis mf|nippon|mirae|parag parikh|ppfas|quant mf|uti mf|kotak mf|dsp mf|motilal|bse ltd|bsestarmf|nse|cams|kfintech|karvy|bsestar|indian clearing|icclbse|\bsgb\b|sovereign gold|gold bond|dhan\b|5paisa|sharekhan|geojit|fyers|lic\b|life insurance|ulip|elss|ncd\b|bond\b""") to Categories.INVESTMENT,
+        Regex("""\bsip\b|zerodha|groww|upstox|kuvera|\bcoin\b|mutual fund|\bmf\b|\bamc\b|\bnps\b|\bppf\b|etmoney|paytm money|angel one|angelone|icici direct|iciciprulife|hdfc sec|hdfc life|kotak sec|smallcase|indmoney|\brd\b|recurring deposit|\bfd\b|fixed deposit|term deposit|sbi mf|hdfc mf|icici pru|axis mf|nippon|mirae|parag parikh|ppfas|quant mf|uti mf|kotak mf|dsp mf|motilal|bse ltd|bsestarmf|nse|cams|kfintech|karvy|bsestar|indian clearing|icclbse|\bsgb\b|sovereign gold|gold bond|dhan\b|5paisa|nse clearing|nsccl|clearing corp|groww pay|groww invest|nextbillion|zerodha broking|rainmatter|sharekhan|geojit|fyers|lic\b|life insurance|ulip|elss|ncd\b|bond\b""") to Categories.INVESTMENT,
         Regex("""rent\b|landlord|nobroker|housing|nestaway|pg\s""") to Categories.RENT,
         Regex("""school|college|university|tuition|coaching|udemy|coursera|byju|unacademy|vedantu|fees|exam""") to Categories.EDUCATION,
         Regex("""atm|cash wdl|cash withdrawal""") to Categories.CASH,
@@ -26,6 +26,7 @@ object Categorizer {
     )
 
     fun categorize(counterparty: String, channel: String, direction: Direction, rawText: String?): String {
+        if (channel == "INVEST") return Categories.INVESTMENT
         val hay = (counterparty + " " + (rawText ?: "")).lowercase()
         for ((re, cat) in rules) {
             if (re.containsMatchIn(hay)) {

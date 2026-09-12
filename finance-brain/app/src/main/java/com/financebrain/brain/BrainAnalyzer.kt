@@ -35,7 +35,8 @@ object BrainAnalyzer {
 
     private val discretionary = setOf(Categories.FOOD, Categories.SHOPPING, Categories.ENTERTAINMENT, Categories.TRAVEL, Categories.OTHER)
 
-    fun analyze(all: List<Transaction>, months: List<MonthSummary>, month: Long, recurring: List<Recurring>, now: Long): BrainReport {
+    fun analyze(all: List<Transaction>, months: List<MonthSummary>, month: Long, recurringAll: List<Recurring>, now: Long): BrainReport {
+        val recurring = recurringAll.filter { it.direction == com.financebrain.data.Direction.DEBIT }
         val end = Calendar.getInstance().apply { timeInMillis = month; add(Calendar.MONTH, 1) }.timeInMillis
         val inMonth = all.filter { it.timestamp in month until end }
         val isCurrent = month == monthStart(now)
