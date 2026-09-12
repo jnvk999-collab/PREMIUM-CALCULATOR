@@ -29,6 +29,11 @@ data class Allocation(
     val perDayPaise get() = if (daysLeft > 0) remainingPaise / daysLeft else remainingPaise
 }
 
+/** A real dated commitment ahead of you, not a share of a monthly budget. */
+data class Upcoming(val at: Long, val type: String, val label: String, val amountPaise: Long) {
+    val isIncome get() = type == "income"
+}
+
 data class CalendarEvent(val day: Int, val type: String, val label: String, val amountPaise: Long)  // type: income, emi, card, sip, bill
 
 data class DisciplineStatus(
@@ -140,6 +145,37 @@ object Planning {
         val spent = inCycle.filter(Insights::isSpend).sumOf { it.amountPaise }
         val daysLeft = if (now in cycleStart until end) daysInMonth(cycleStart) - dayOfMonth(now) + 1 else 0
         return Allocation(income, actualIncome == 0L, emi, cardDue, income * investPct / 100, bills, spent, daysLeft)
+    }
+
+    /**
+     * Everything due in the next [horizonDays], by date. EMIs, card bills and regular bills are
+     * commitments with dates, so they are listed as they fall due instead of being taken off today.
+     */
+    fun upcoming(
+        now: Long, salary: SalaryInfo?, loans: List<LoanInfo>, cards: List<CardStatus>,
+        recurring: List<Recurring>, horizonDays: Int = 45,
+    ): List<Upcoming> {
+        val until = now + horizonDays * 86_400_000L
+        val out = ArrayList<Upcoming>()
+        fun add(at: Long, type: String, label: String, amount: Long) {
+            if (amount > 0 && at in now..until) out += Upcoming(at, type, label, amount)
+        }
+        salary?.let { add(it.nextExpected, "income", it.employer, it.amountPaise) }
+        loans.forEach { add(it.nextDue, "emi", it.lender, it.emiPaise) }
+        cards.forEach { add(it.dueAt, "card", "${it.card.name} bill", it.outstandingPaise) }
+        val loanKeys = loans.map { com.financebrain.parser.Categorizer.merchantKey(it.lender) }.toSet()
+        val salaryKey = salary?.let { com.financebrain.parser.Categorizer.merchantKey(it.employer) }
+        recurring.forEach { r ->
+            val key = com.financebrain.parser.Categorizer.merchantKey(r.name)
+            if (key in loanKeys || key == salaryKey) return@forEach
+            val type = when {
+                r.direction == Direction.CREDIT -> "income"
+                r.category == Categories.INVESTMENT -> "sip"
+                else -> "bill"
+            }
+            add(r.nextDue, type, r.name, r.amountPaise)
+        }
+        return out.sortedBy { it.at }
     }
 
     fun calendar(monthTs: Long, salaryDay: Int, salary: SalaryInfo?, loans: List<LoanInfo>, cards: List<CardStatus>, recurring: List<Recurring>): List<CalendarEvent> {

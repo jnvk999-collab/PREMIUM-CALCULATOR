@@ -68,9 +68,11 @@ fun HomeScreen(
     val isCurrent = state.month == monthStart(now)
     val a = plan.allocation
     val income = a?.incomePaise ?: state.incomePaise
-    val noIncome = a == null && income == 0L
-    val left = if (a != null) a.remainingPaise else income - state.expensePaise - state.investedPaise
-    val leftColor = if (noIncome) p.orange else if (left < 0) p.red else if (a != null && left < a.freeToSpendPaise / 4) p.orange else p.green
+    val w = state.wallet
+    // What you have is the plain sum: what you started with, plus what came in, less what went out.
+    val left = w?.paise ?: (income - state.expensePaise - state.investedPaise)
+    val dueSoon = plan.upcoming.filter { !it.isIncome }.sumOf { it.amountPaise }
+    val leftColor = if (left < 0) p.red else if (dueSoon > left) p.orange else p.green
 
     LazyColumn(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = padding.calculateTopPadding() + 4.dp, bottom = padding.calculateBottomPadding() + 96.dp),
@@ -97,19 +99,22 @@ fun HomeScreen(
         // 1. How much can I spend
         item {
             SectionCard(tint = leftColor) {
-                Text((if (noIncome) "SPENT THIS MONTH" else if (isCurrent) "LEFT TO SPEND THIS MONTH" else "LEFT OVER THAT MONTH"), style = MaterialTheme.typography.labelSmall, color = p.t2)
-                Text(formatRupees(if (noIncome) state.expensePaise else left), style = MaterialTheme.typography.displaySmall, color = leftColor, fontFamily = FontFamily.Monospace)
+                Text(if (isCurrent) "MONEY YOU HAVE NOW" else "MONEY AT THE END OF THAT MONTH", style = MaterialTheme.typography.labelSmall, color = p.t2)
+                Text(formatRupees(left), style = MaterialTheme.typography.displaySmall, color = leftColor, fontFamily = FontFamily.Monospace)
                 Text(
-                    when {
-                        noIncome -> "No income has landed this month yet" + (plan.netWorth?.let { " · ${compactRupees(it.bankPaise)} in the bank" } ?: "") + ". Once salary arrives this turns into what is left to spend."
-                        a == null -> "Income ${compactRupees(income)} − spent ${compactRupees(state.expensePaise)} − invested ${compactRupees(state.investedPaise)}"
-                        a.daysLeft > 0 -> "${formatRupees(a.perDayPaise.coerceAtLeast(0))} a day for ${a.daysLeft} more days · spent ${compactRupees(a.spentSoFarPaise)} of ${compactRupees(a.freeToSpendPaise)}"
-                        else -> "Spent ${compactRupees(a.spentSoFarPaise)} of ${compactRupees(a.freeToSpendPaise)} that was free after EMIs, bills and investing"
-                    },
+                    if (w != null)
+                        "${formatRupees(w.basePaise)} on ${formatDay(w.baseAt)}" +
+                            (if (w.creditsPaise > 0) " + ${compactRupees(w.creditsPaise)} in" else "") +
+                            (if (w.debitsPaise > 0) " − ${compactRupees(w.debitsPaise)} out" else "")
+                    else "Enter today's bank balance and this runs forward from there",
                     style = MaterialTheme.typography.bodySmall, color = p.t2
                 )
-                Spacer(Modifier.height(10.dp))
-                if (!noIncome) MonthBar(income, state.expensePaise, a?.emiPaise ?: 0, a?.cardDuePaise ?: 0, state.investedPaise, a?.fixedBillsPaise ?: 0)
+                if (w != null) {
+                    Spacer(Modifier.height(10.dp))
+                    SpentBar(w.basePaise + w.creditsPaise, w.debitsPaise)
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Tap to correct the balance", style = MaterialTheme.typography.labelSmall, color = p.gold, modifier = Modifier.clickable { onSetBalance(null) })
             }
         }
 
@@ -125,7 +130,40 @@ fun HomeScreen(
             }
         }
 
-        // 3. What needs me
+        // 3. What is coming
+        if (plan.upcoming.isNotEmpty()) item {
+            SectionCard(tint = p.blue) {
+                SectionTitle("Coming up")
+                plan.upcoming.take(6).forEach { u ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(u.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                formatDay(u.at) + " · " + when (u.type) {
+                                    "emi" -> "EMI"; "card" -> "card bill"; "sip" -> "investment"; "income" -> "expected in"; else -> "bill"
+                                },
+                                style = MaterialTheme.typography.labelSmall, color = p.t2
+                            )
+                        }
+                        Text(
+                            (if (u.isIncome) "+" else "−") + formatRupees(u.amountPaise),
+                            style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace,
+                            color = if (u.isIncome) p.green else p.t1
+                        )
+                    }
+                }
+                if (dueSoon > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "${formatRupees(dueSoon)} goes out in the next 45 days. You have ${formatRupees(left)}" +
+                            (if (dueSoon > left) ", so ${formatRupees(dueSoon - left)} of it has to come from your next salary." else ", which covers it."),
+                        style = MaterialTheme.typography.bodySmall, color = if (dueSoon > left) p.orange else p.t2
+                    )
+                }
+            }
+        }
+
+        // 4. What needs me
         if (plan.review.isNotEmpty()) item {
             SectionCard(tint = p.gold) {
                 SectionTitle("Needs your answer · ${plan.review.size}")
@@ -166,6 +204,20 @@ private fun Tile(label: String, value: String, color: Color, modifier: Modifier,
         Text(label, style = MaterialTheme.typography.labelSmall, color = color)
         Text(value, style = MaterialTheme.typography.titleMedium, color = color, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/** One bar: how much of what you had has gone. */
+@Composable
+private fun SpentBar(had: Long, spent: Long) {
+    val p = P
+    val total = had.coerceAtLeast(1).toFloat()
+    val gone = spent.coerceIn(0, had).toFloat() / total
+    Row(Modifier.fillMaxWidth().height(10.dp).background(p.bd, RoundedCornerShape(5.dp))) {
+        if (gone > 0f) Box(Modifier.weight(gone).height(10.dp).background(p.red))
+        if (gone < 1f) Box(Modifier.weight(1f - gone).height(10.dp).background(p.green))
+    }
+    Spacer(Modifier.height(6.dp))
+    Text("Spent ${compactRupees(spent)} of ${compactRupees(had)}", style = MaterialTheme.typography.labelSmall, color = p.t2)
 }
 
 /** One bar: where this month's income went. */

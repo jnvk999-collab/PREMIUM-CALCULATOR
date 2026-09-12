@@ -94,7 +94,8 @@ object Insights {
     fun accountBalance(rows: List<Transaction>, anchor: BalanceAnchor?, at: Long): BalanceBuild? {
         val bankRows = rows.filter(::movesBankMoney)
         val reported = bankRows.filter { it.balancePaise != null && it.timestamp <= at }.maxByOrNull { it.timestamp }
-        val useAnchor = anchor != null && anchor.at <= at && (reported == null || anchor.at >= reported.timestamp)
+        // What you typed wins: you looked at the bank, so run it forward rather than second-guessing it.
+        val useAnchor = anchor != null && anchor.at <= at
         val basePaise: Long
         val baseAt: Long
         when {
@@ -108,6 +109,25 @@ object Insights {
             basePaise, baseAt, useAnchor,
             after.filter { it.direction == Direction.CREDIT }.sumOf { it.amountPaise },
             after.filter { it.direction == Direction.DEBIT }.sumOf { it.amountPaise },
+        )
+    }
+
+    /** The same working, added up across every account: what you have, and how it got there. */
+    fun wallet(all: List<Transaction>, anchors: List<BalanceAnchor>, at: Long): BalanceBuild? {
+        anchors.firstOrNull { it.isTotal }?.let { a ->
+            val rows = all.filter { it.timestamp > a.at && it.timestamp <= at && movesBankMoney(it) }
+            return BalanceBuild(
+                a.amountPaise, a.at, true,
+                rows.filter { it.direction == Direction.CREDIT }.sumOf { it.amountPaise },
+                rows.filter { it.direction == Direction.DEBIT }.sumOf { it.amountPaise },
+            )
+        }
+        val builds = all.filter { it.accountTail != null }.groupBy { it.bank + "|" + it.accountTail }
+            .mapNotNull { (key, rows) -> accountBalance(rows, anchors.firstOrNull { it.key == key }, at) }
+        if (builds.isEmpty()) return null
+        return BalanceBuild(
+            builds.sumOf { it.basePaise }, builds.maxOf { it.baseAt }, builds.any { it.fromUser },
+            builds.sumOf { it.creditsPaise }, builds.sumOf { it.debitsPaise },
         )
     }
 

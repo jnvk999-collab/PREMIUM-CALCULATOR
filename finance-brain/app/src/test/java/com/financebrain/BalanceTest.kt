@@ -43,6 +43,28 @@ class BalanceTest {
         assertEquals(6_000_00L, Insights.balanceAt(rows, listOf(anchor), now + 1))
     }
 
+    @Test fun whatYouTypedBeatsABankFigureQuotedAfterwards() {
+        // You checked the bank at noon; a later alert quoting a stale figure must not overwrite you.
+        val rows = listOf(
+            tx(2_000_00, Direction.DEBIT, now - 3_600_000L, balance = 20_000_00),
+        )
+        val anchor = BalanceAnchor("SBI|1730", 10_000_00, now - 2 * 3_600_000L)
+        assertEquals(8_000_00L, Insights.balanceAt(rows, listOf(anchor), now + 1))
+    }
+
+    @Test fun theWalletIsTheStartingFigureLessWhatWentOut() {
+        val rows = listOf(
+            tx(3_000_00, Direction.DEBIT, now - 3_600_000L),
+            tx(500_00, Direction.CREDIT, now - 1_800_000L),
+        )
+        val anchor = BalanceAnchor("ALL", 20_000_00, now - day)
+        val w = Insights.wallet(rows, listOf(anchor), now + 1)!!
+        assertEquals(20_000_00L, w.basePaise)
+        assertEquals(3_000_00L, w.debitsPaise)
+        assertEquals(500_00L, w.creditsPaise)
+        assertEquals(17_500_00L, w.paise)
+    }
+
     @Test fun cardSpendsDoNotTouchTheBankBalance() {
         val rows = listOf(
             tx(10_000_00, Direction.DEBIT, now - 2 * day, balance = 20_000_00),

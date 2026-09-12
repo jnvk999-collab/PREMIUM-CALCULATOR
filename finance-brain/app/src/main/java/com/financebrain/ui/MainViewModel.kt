@@ -63,6 +63,7 @@ data class PlanState(
     val cards: List<CardStatus> = emptyList(),
     val allocation: Allocation? = null,
     val calendar: List<CalendarEvent> = emptyList(),
+    val upcoming: List<com.financebrain.data.Upcoming> = emptyList(),
     val goals: List<Goal> = emptyList(),
     val receivables: List<Receivable> = emptyList(),
     val informalLoans: List<InformalLoan> = emptyList(),
@@ -103,6 +104,7 @@ data class HomeState(
     val investments: List<InvestmentLine> = emptyList(),
     val monthBalance: MonthBalance = MonthBalance(null, null, null),
     val anchors: List<BalanceAnchor> = emptyList(),
+    val wallet: Insights.BalanceBuild? = null,
     val accountList: List<AccountView> = emptyList(),
     val trackingStart: Long = 0,
 ) {
@@ -250,6 +252,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             loans = Insights.loans(all, recurring.filter { it.direction == Direction.DEBIT }, now),
             investments = Insights.investments(tracked, recurring.filter { it.direction == Direction.DEBIT }),
             monthBalance = Insights.monthBalance(all, anchors, m, end, now),
+            wallet = Insights.wallet(all, anchors, now + 1),
             anchors = anchors,
             accountList = all.filter { it.accountTail != null && it.accountKind != "INVEST" }
                 .groupBy { it.bank + "|" + it.accountTail }
@@ -332,6 +335,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 detectedLoans + hl.second.map { com.financebrain.data.LoanInfo(it.lender, it.emiPaise, Planning.dayToTs(now, it.dueDay), 0, 0, it.type) },
                 statuses, debits, appRef.investTargetPct),
             calendar = Planning.calendar(s.month, appRef.salaryDay, s.salary, s.loans, statuses, s.recurring),
+            upcoming = Planning.upcoming(
+                now, s.salary,
+                detectedLoans + hl.second.map { com.financebrain.data.LoanInfo(it.lender, it.emiPaise, Planning.dayToTs(now, it.dueDay).let { d -> if (d >= now) d else Planning.dayToTs(now + 31L * 86_400_000L, it.dueDay) }, 0, 0, it.type) },
+                statuses, s.recurring,
+            ),
             goals = goals, receivables = recv, informalLoans = loans,
             discipline = Planning.discipline(s.tracked, s.month, d.first, d.second, d.third, now),
             controlled = d.first, zero = d.second, entries = d.third,
