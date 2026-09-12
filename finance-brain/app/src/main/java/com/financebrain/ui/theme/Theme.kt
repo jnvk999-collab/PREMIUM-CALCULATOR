@@ -23,10 +23,11 @@ val DarkPalette = Palette(
     gold = Color(0xFFD9A84C), green = Color(0xFF27C882), red = Color(0xFFFF526A), blue = Color(0xFF4A9EFF), purple = Color(0xFF9B7FFF), orange = Color(0xFFFF8C42), teal = Color(0xFF2DD4BF),
     t1 = Color(0xFFE6EAF8), t2 = Color(0xFF6070A0), t3 = Color(0xFF3F4A6B),
 )
+/** Bright theme: soft blue-white ground, white cards, saturated semantic colours. */
 val LightPalette = Palette(
-    bg = Color(0xFFFAFAF9), s1 = Color(0xFFFFFFFF), s2 = Color(0xFFF6F5F0), s3 = Color(0xFFEFEDE8), bd = Color(0xFFE5E2DA), bd2 = Color(0xFFD4D0C8),
-    gold = Color(0xFFC17B2A), green = Color(0xFF1A7A4A), red = Color(0xFFCC3333), blue = Color(0xFF2563AA), purple = Color(0xFF6B4ECC), orange = Color(0xFFC4500A), teal = Color(0xFF0F766E),
-    t1 = Color(0xFF1A1915), t2 = Color(0xFF6B6860), t3 = Color(0xFFA8A59E),
+    bg = Color(0xFFF2F6FC), s1 = Color(0xFFFFFFFF), s2 = Color(0xFFFFFFFF), s3 = Color(0xFFEDF2FA), bd = Color(0xFFDCE4F0), bd2 = Color(0xFFC5D1E3),
+    gold = Color(0xFFD48A12), green = Color(0xFF16A34A), red = Color(0xFFE11D48), blue = Color(0xFF2563EB), purple = Color(0xFF7C3AED), orange = Color(0xFFF97316), teal = Color(0xFF0D9488),
+    t1 = Color(0xFF0F172A), t2 = Color(0xFF5B6B84), t3 = Color(0xFF94A3B8),
 )
 
 val LocalPalette = staticCompositionLocalOf { DarkPalette }
@@ -44,8 +45,8 @@ val Blue = DarkPalette.blue
 val Purple = DarkPalette.purple
 
 val CategoryPalette = listOf(
-    DarkPalette.orange, DarkPalette.blue, DarkPalette.purple, DarkPalette.gold, DarkPalette.green, DarkPalette.red,
-    DarkPalette.teal, Color(0xFFD9558F), Color(0xFF9C6B2E), Color(0xFF6C7A89), Color(0xFF5CB85C), Color(0xFFB04E4E),
+    Color(0xFFF97316), Color(0xFF2563EB), Color(0xFF7C3AED), Color(0xFFD48A12), Color(0xFF16A34A), Color(0xFFE11D48),
+    Color(0xFF0D9488), Color(0xFFDB2777), Color(0xFF9C6B2E), Color(0xFF6C7A89), Color(0xFF65A30D), Color(0xFFB04E4E),
 )
 
 private fun scheme(p: Palette, dark: Boolean) = if (dark) darkColorScheme(
@@ -74,8 +75,12 @@ val AppTypography = Typography().let {
     )
 }
 
+/** "light" (default), "dark" or "system". */
 @Composable
-fun FinanceBrainTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun isDarkFor(mode: String): Boolean = when (mode) { "dark" -> true; "system" -> isSystemInDarkTheme(); else -> false }
+
+@Composable
+fun FinanceBrainTheme(darkTheme: Boolean = false, content: @Composable () -> Unit) {
     val p = if (darkTheme) DarkPalette else LightPalette
     androidx.compose.runtime.CompositionLocalProvider(LocalPalette provides p) {
         MaterialTheme(colorScheme = scheme(p, darkTheme), typography = AppTypography, content = content)

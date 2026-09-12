@@ -340,6 +340,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSalaryDay(d: Int) { appRef.salaryDay = d; _month.value = monthStart(System.currentTimeMillis()); _settingsTick.value++ }
     fun setExpectedIncome(paise: Long) { appRef.expectedIncomePaise = paise; _settingsTick.value++ }
+    val themeMode = MutableStateFlow(appRef.themeMode)
+    fun setThemeMode(m: String) { appRef.themeMode = m; themeMode.value = m }
     fun setInvestPct(p: Int) { appRef.investTargetPct = p; _settingsTick.value++ }
     fun setBudget(paise: Long) { appRef.monthlyBudgetPaise = paise; _settingsTick.value++ }
     fun setDaughterName(n: String) { appRef.daughterName = n; _settingsTick.value++ }

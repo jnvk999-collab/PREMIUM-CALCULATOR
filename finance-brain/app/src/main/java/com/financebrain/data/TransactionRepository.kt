@@ -81,6 +81,14 @@ class TransactionRepository(
     suspend fun setBalance(key: String, amountPaise: Long, at: Long) = db.balanceAnchors().upsert(BalanceAnchor(key, amountPaise, at))
     suspend fun clearBalance(key: String) = db.balanceAnchors().delete(key)
 
+    /** A balance entered during the day is treated as that day's opening balance, so the day's payments come off it. */
+    suspend fun moveAnchorsToDayStart() {
+        for (a in db.balanceAnchors().list()) {
+            val start = com.financebrain.ui.dayStart(a.at)
+            if (a.at != start) db.balanceAnchors().upsert(a.copy(at = start))
+        }
+    }
+
     fun between(from: Long, to: Long) = db.transactions().between(from, to)
 
     /** Stores a parsed alert. Returns true when it was new. */

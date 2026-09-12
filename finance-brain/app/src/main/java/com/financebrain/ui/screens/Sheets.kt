@@ -187,13 +187,14 @@ fun SetBalanceSheet(
     accountViews: List<com.financebrain.ui.AccountView> = emptyList(),
     anchors: List<com.financebrain.data.BalanceAnchor>,
     onDismiss: () -> Unit,
-    onSave: (key: String, amountPaise: Long) -> Unit,
+    onSave: (key: String, amountPaise: Long, includesToday: Boolean) -> Unit,
     onClear: (key: String) -> Unit,
     initialTarget: String? = null,
 ) {
     val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var target by remember { mutableStateOf(initialTarget ?: "ALL") }
     var amount by remember { mutableStateOf("") }
+    var includesToday by remember { mutableStateOf(false) }
     val paise = BankSmsParser.toPaise(amount) ?: 0L
     val existing = anchors.firstOrNull { it.key == target }
 
@@ -202,7 +203,7 @@ fun SetBalanceSheet(
             Text("Update balance", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(6.dp))
             Text(
-                "Type what your bank shows right now. From here the app keeps it running: every credit adds, every debit subtracts.",
+                "Enter the balance and the app keeps it running from there: every credit adds, every payment subtracts.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(14.dp))
@@ -227,8 +228,16 @@ fun SetBalanceSheet(
                 textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 singleLine = true, modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = { onSave(target, paise) }, enabled = paise >= 0 && amount.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp)) {
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (includesToday) "Balance as of right now" else "Balance at the start of today", style = MaterialTheme.typography.bodyMedium)
+                    Text(if (includesToday) "Today's payments are already taken out of this figure." else "Today's payments so far will be subtracted from this figure.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                androidx.compose.material3.Switch(checked = includesToday, onCheckedChange = { includesToday = it })
+            }
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = { onSave(target, paise, includesToday) }, enabled = paise >= 0 && amount.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp)) {
                 Text(if (amount.isNotBlank()) "Start from ${formatRupees(paise)}" else "Save")
             }
             if (existing != null) TextButton(onClick = { onClear(target) }) { Text("Remove this balance and go back to bank-reported figures") }

@@ -21,6 +21,11 @@ class FinanceBrainApp : Application() {
     fun dismissedReviews(): Set<String> = prefs.getStringSet("dismissed_reviews", emptySet()) ?: emptySet()
     fun dismissReview(id: String) { prefs.edit().putStringSet("dismissed_reviews", dismissedReviews() + id).apply() }
 
+    /** "light", "dark" or "system". Bright by default. */
+    var themeMode: String
+        get() = prefs.getString("theme_mode", "light") ?: "light"
+        set(v) { prefs.edit().putString("theme_mode", v).apply() }
+
     /** Totals count only transactions on or after this moment. Set to now on first launch of this version. */
     var trackingStart: Long
         get() = prefs.getLong("tracking_start", 0L)
@@ -65,6 +70,7 @@ class FinanceBrainApp : Application() {
             ignoredBanks().forEach { repository.purgeBank(it) }
             ignoredAccounts().forEach { k -> val b = k.substringBefore('|'); val t = k.substringAfter('|'); if (t.isNotBlank()) repository.purgeAccount(b, t) }
             if (!prefs.getBoolean("reparsed_tails_v2", false)) { repository.reparseAccountTails(); prefs.edit().putBoolean("reparsed_tails_v2", true).apply() }
+            if (!prefs.getBoolean("anchors_day_v1", false)) { repository.moveAnchorsToDayStart(); prefs.edit().putBoolean("anchors_day_v1", true).apply() }
             repository.syncCardsFromTransactions()
             repository.detectInternalTransfers()
         }

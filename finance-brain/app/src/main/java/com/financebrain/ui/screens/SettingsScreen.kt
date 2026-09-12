@@ -69,6 +69,8 @@ fun SettingsScreen(
     onCountUncounted: (com.financebrain.sms.UncountedSms, com.financebrain.data.Direction) -> Unit = { _, _ -> },
     onBatteryExemption: () -> Unit = {},
     batteryExempt: Boolean = false,
+    themeMode: String = "light",
+    onThemeMode: (String) -> Unit = {},
 ) {
     androidx.compose.runtime.LaunchedEffect(Unit) { onLoadUncounted() }
     LazyColumn(
@@ -76,6 +78,16 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { Text("Settings", style = MaterialTheme.typography.headlineSmall) }
+        item {
+            SectionCard {
+                SectionTitle("Look")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("light" to "Bright", "dark" to "Dark", "system" to "Follow phone").forEach { (k, label) ->
+                        androidx.compose.material3.FilterChip(selected = themeMode == k, onClick = { onThemeMode(k) }, label = { Text(label) })
+                    }
+                }
+            }
+        }
         item {
             SectionCard {
                 SectionTitle("Count from")

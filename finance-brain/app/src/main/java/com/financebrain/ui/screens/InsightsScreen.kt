@@ -67,7 +67,7 @@ fun InsightsScreen(state: HomeState, plan: com.financebrain.ui.PlanState, vm: co
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text((sectionTitles[section] ?: section).uppercase(), style = MaterialTheme.typography.labelSmall, color = com.financebrain.ui.theme.DarkPalette.t2)
+            Text((sectionTitles[section] ?: section).uppercase(), style = MaterialTheme.typography.labelSmall, color = com.financebrain.ui.theme.P.t2)
             Text(formatCycle(state.month), style = MaterialTheme.typography.titleMedium)
         }
         when (section) {

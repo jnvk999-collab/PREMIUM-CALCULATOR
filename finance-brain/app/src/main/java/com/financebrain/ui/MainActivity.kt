@@ -40,6 +40,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,7 +72,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { FinanceBrainTheme { App(vm) } }
+        setContent {
+            val mode by vm.themeMode.collectAsState()
+            val dark = com.financebrain.ui.theme.isDarkFor(mode)
+            LaunchedEffect(dark) {
+                val t = android.graphics.Color.TRANSPARENT
+                enableEdgeToEdge(
+                    statusBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(t) else androidx.activity.SystemBarStyle.light(t, t),
+                    navigationBarStyle = if (dark) androidx.activity.SystemBarStyle.dark(t) else androidx.activity.SystemBarStyle.light(t, t),
+                )
+            }
+            FinanceBrainTheme(darkTheme = dark) { App(vm) }
+        }
     }
 }
 
@@ -83,6 +95,7 @@ private val SMS_PERMISSIONS = arrayOf(Manifest.permission.READ_SMS, Manifest.per
 
 @Composable
 private fun App(vm: MainViewModel) {
+    val themeMode by vm.themeMode.collectAsState()
     val context = androidx.compose.ui.platform.LocalContext.current
     val p = P
     fun granted() = SMS_PERMISSIONS.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
@@ -240,7 +253,7 @@ private fun App(vm: MainViewModel) {
                 { csvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "*/*")) },
                 accountRefs, ignoredAccounts, vm::setAccountIgnored, state.trackingStart, vm::setTrackingStart, vm::setExpectedIncome,
                 uncounted, vm::loadUncounted, vm::countUncounted,
-                { batteryLauncher.launch(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}"))) }, batteryExempt)
+                { batteryLauncher.launch(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}"))) }, batteryExempt, themeMode = themeMode, onThemeMode = vm::setThemeMode)
             else -> HomeScreen(state, plan, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, ::open, ::setBalanceFor, ::review)
         }
     }
@@ -255,7 +268,7 @@ private fun App(vm: MainViewModel) {
     if (settingBalance) SetBalanceSheet(
         accounts = state.accounts, accountViews = state.accountList, anchors = state.anchors,
         onDismiss = { settingBalance = false },
-        onSave = { key, paise -> vm.setBalance(key, paise, System.currentTimeMillis()); settingBalance = false },
+        onSave = { key, paise, includesToday -> vm.setBalance(key, paise, if (includesToday) System.currentTimeMillis() else com.financebrain.ui.dayStart(System.currentTimeMillis())); settingBalance = false },
         onClear = { key -> vm.clearBalance(key); settingBalance = false },
         initialTarget = balanceTarget,
     )

@@ -108,3 +108,9 @@ fun formatCycle(cycleStart: Long): String {
     val end = monthEnd(cycleStart) - 86_400_000L
     return "${dayFmt.format(Date(cycleStart))} – ${dayFmt.format(Date(end))}"
 }
+
+/** Midnight at the start of the local day containing [ts]. */
+fun dayStart(ts: Long): Long = java.util.Calendar.getInstance().apply {
+    timeInMillis = ts
+    set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+}.timeInMillis

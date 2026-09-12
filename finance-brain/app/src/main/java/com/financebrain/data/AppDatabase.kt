@@ -120,6 +120,7 @@ interface BalanceAnchorDao {
 
     @Query("SELECT * FROM balance_anchors")
     fun all(): Flow<List<BalanceAnchor>>
+
     @Query("SELECT * FROM balance_anchors") suspend fun list(): List<BalanceAnchor>
 }
 

@@ -68,8 +68,9 @@ fun HomeScreen(
     val isCurrent = state.month == monthStart(now)
     val a = plan.allocation
     val income = a?.incomePaise ?: state.incomePaise
+    val noIncome = a == null && income == 0L
     val left = if (a != null) a.remainingPaise else income - state.expensePaise - state.investedPaise
-    val leftColor = if (left < 0) p.red else if (a != null && left < a.freeToSpendPaise / 4) p.orange else p.green
+    val leftColor = if (noIncome) p.orange else if (left < 0) p.red else if (a != null && left < a.freeToSpendPaise / 4) p.orange else p.green
 
     LazyColumn(
         contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = padding.calculateTopPadding() + 4.dp, bottom = padding.calculateBottomPadding() + 96.dp),
@@ -96,11 +97,11 @@ fun HomeScreen(
         // 1. How much can I spend
         item {
             SectionCard(tint = leftColor) {
-                Text((if (isCurrent) "LEFT TO SPEND THIS MONTH" else "LEFT OVER THAT MONTH"), style = MaterialTheme.typography.labelSmall, color = p.t2)
-                Text(formatRupees(left), style = MaterialTheme.typography.displaySmall, color = leftColor, fontFamily = FontFamily.Monospace)
+                Text((if (noIncome) "SPENT THIS MONTH" else if (isCurrent) "LEFT TO SPEND THIS MONTH" else "LEFT OVER THAT MONTH"), style = MaterialTheme.typography.labelSmall, color = p.t2)
+                Text(formatRupees(if (noIncome) state.expensePaise else left), style = MaterialTheme.typography.displaySmall, color = leftColor, fontFamily = FontFamily.Monospace)
                 Text(
                     when {
-                        a == null && income == 0L -> "Spent ${compactRupees(state.expensePaise)} so far · enter your monthly income in Settings to see what is left"
+                        noIncome -> "No income has landed this month yet" + (plan.netWorth?.let { " · ${compactRupees(it.bankPaise)} in the bank" } ?: "") + ". Once salary arrives this turns into what is left to spend."
                         a == null -> "Income ${compactRupees(income)} − spent ${compactRupees(state.expensePaise)} − invested ${compactRupees(state.investedPaise)}"
                         a.daysLeft > 0 -> "${formatRupees(a.perDayPaise.coerceAtLeast(0))} a day for ${a.daysLeft} more days · spent ${compactRupees(a.spentSoFarPaise)} of ${compactRupees(a.freeToSpendPaise)}"
                         else -> "Spent ${compactRupees(a.spentSoFarPaise)} of ${compactRupees(a.freeToSpendPaise)} that was free after EMIs, bills and investing"
@@ -108,7 +109,7 @@ fun HomeScreen(
                     style = MaterialTheme.typography.bodySmall, color = p.t2
                 )
                 Spacer(Modifier.height(10.dp))
-                MonthBar(income, state.expensePaise, a?.emiPaise ?: 0, a?.cardDuePaise ?: 0, state.investedPaise, a?.fixedBillsPaise ?: 0)
+                if (!noIncome) MonthBar(income, state.expensePaise, a?.emiPaise ?: 0, a?.cardDuePaise ?: 0, state.investedPaise, a?.fixedBillsPaise ?: 0)
             }
         }
 
@@ -161,8 +162,8 @@ fun HomeScreen(
 @Composable
 private fun Tile(label: String, value: String, color: Color, modifier: Modifier, onClick: () -> Unit) {
     val p = P
-    Column(modifier.background(p.s2, RoundedCornerShape(12.dp)).border(1.dp, p.bd, RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp)) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = p.t2)
+    Column(modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(12.dp)).border(1.dp, color.copy(alpha = 0.4f), RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = color)
         Text(value, style = MaterialTheme.typography.titleMedium, color = color, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
