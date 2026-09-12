@@ -79,17 +79,50 @@ private fun App(vm: MainViewModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     fun granted() = SMS_PERMISSIONS.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
 
+    val activity = context as ComponentActivity
     var smsGranted by remember { mutableStateOf(granted()) }
     var onboarded by rememberSaveable { mutableStateOf(granted()) }
+    // Android shows the SMS dialog at most twice. After that every request is denied silently,
+    // so we send the user to the app's permission page instead.
+    var askedOnce by rememberSaveable { mutableStateOf(false) }
+    fun openAppSettings() {
+        context.startActivity(
+            android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}"))
+                .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         smsGranted = granted()
         if (smsGranted) { onboarded = true; vm.scanInbox() }
+        else {
+            val canAskAgain = SMS_PERMISSIONS.any { activity.shouldShowRequestPermissionRationale(it) }
+            if (askedOnce && !canAskAgain) openAppSettings()
+            askedOnce = true
+        }
+    }
+    fun requestSms() {
+        val blocked = askedOnce && SMS_PERMISSIONS.none { activity.shouldShowRequestPermissionRationale(it) }
+        if (blocked) openAppSettings() else launcher.launch(SMS_PERMISSIONS)
+    }
+
+    // Re-check when returning from system settings.
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val g = granted()
+                if (g != smsGranted) smsGranted = g
+                if (g) onboarded = true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(obs)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
     }
 
     LaunchedEffect(smsGranted) { if (smsGranted) vm.scanInbox() }
 
     if (!onboarded) {
-        Onboarding(onAllow = { launcher.launch(SMS_PERMISSIONS) }, onSkip = { onboarded = true })
+        Onboarding(onAllow = { requestSms() }, onOpenSettings = { openAppSettings() }, onSkip = { onboarded = true })
         return
     }
 
@@ -122,7 +155,7 @@ private fun App(vm: MainViewModel) {
             Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions })
             Tab.Transactions -> TransactionsScreen(state.allTransactions, padding) { selected = it }
             Tab.Insights -> InsightsScreen(state, padding)
-            Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { launcher.launch(SMS_PERMISSIONS) }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate)
+            Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { requestSms() }, { openAppSettings() }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate)
         }
     }
 
@@ -143,7 +176,7 @@ private fun App(vm: MainViewModel) {
 }
 
 @Composable
-private fun Onboarding(onAllow: () -> Unit, onSkip: () -> Unit) {
+private fun Onboarding(onAllow: () -> Unit, onOpenSettings: () -> Unit, onSkip: () -> Unit) {
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -159,6 +192,7 @@ private fun Onboarding(onAllow: () -> Unit, onSkip: () -> Unit) {
         )
         Spacer(Modifier.height(32.dp))
         Button(onClick = onAllow, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Allow SMS access") }
+        TextButton(onClick = onOpenSettings) { Text("No dialog? Open app settings") }
         TextButton(onClick = onSkip) { Text("Skip for now") }
     }
 }

@@ -28,6 +28,7 @@ fun SettingsScreen(
     smsGranted: Boolean,
     padding: PaddingValues,
     onRequestSms: () -> Unit,
+    onOpenAppSettings: () -> Unit,
     onRescan: (full: Boolean) -> Unit,
     update: com.financebrain.update.UpdateState,
     onCheckUpdate: () -> Unit,
@@ -48,6 +49,15 @@ fun SettingsScreen(
                         Text(if (smsGranted) "On · new alerts are added instantly" else "Permission needed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (!smsGranted) Button(onClick = onRequestSms) { Text("Allow") }
+                }
+                if (!smsGranted) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "If tapping Allow shows nothing, Android has blocked the prompt. Open the app's settings page, choose Permissions → SMS → Allow, then come back.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onOpenAppSettings) { Text("Open app settings") }
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth()) {
