@@ -1,0 +1,74 @@
+name: Finance Brain · build and release
+
+on:
+  push:
+    paths: ["finance-brain/**", ".github/workflows/finance-brain-android.yml"]
+  pull_request:
+    paths: ["finance-brain/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: finance-brain }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build number (1000 + run number, always above a local build's 1)
+        run: echo "VERSION_CODE=$((1000 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Restore signing key from secrets
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.FINANCE_BRAIN_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/finance-brain.jks"
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            SHA1=$(keytool -list -v -keystore "$RUNNER_TEMP/finance-brain.jks" -alias financebrain -storepass "${{ secrets.FINANCE_BRAIN_KEYSTORE_PASSWORD }}" | grep -E "SHA1:" | head -1 | sed 's/.*SHA1: //')
+            echo "### Signing key SHA-1 (for the Google OAuth Android client)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"; echo "$SHA1" >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::FINANCE_BRAIN_KEYSTORE_BASE64 secret is not set. Run the 'Finance Brain · generate signing key' workflow once and add the secrets. No release will be published."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build signed release APK
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/finance-brain.jks
+          KEYSTORE_PASSWORD: ${{ secrets.FINANCE_BRAIN_KEYSTORE_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/finance-brain.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: finance-brain-apk
+          path: ${{ runner.temp }}/finance-brain.apk
+
+      - name: Read version
+        id: ver
+        run: echo "name=$(cat VERSION).${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release (the app checks this to self-update)
+        if: steps.signing.outputs.available == 'true' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: fb-v${{ steps.ver.outputs.name }}
+          name: Finance Brain ${{ steps.ver.outputs.name }}
+          body: |
+            Automatic build from `${{ github.ref_name }}` @ ${{ github.sha }}.
+
+            ${{ github.event.head_commit.message }}
+          files: ${{ runner.temp }}/finance-brain.apk

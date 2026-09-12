@@ -1,0 +1,43 @@
+name: Finance Brain · generate signing key
+
+# Run this ONCE from the Actions tab. It creates a keystore and shows you exactly what to
+# paste into two repository secrets. The key never touches the repository contents.
+on:
+  workflow_dispatch:
+
+jobs:
+  keygen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - name: Create keystore
+        run: |
+          PW=$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)
+          keytool -genkeypair -keystore finance-brain.jks -alias financebrain -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$PW" -keypass "$PW" -dname "CN=Finance Brain, O=Personal, C=IN"
+          base64 -w0 finance-brain.jks > keystore-base64.txt
+          echo "$PW" > keystore-password.txt
+          SHA1=$(keytool -list -v -keystore finance-brain.jks -alias financebrain -storepass "$PW" | grep -E "SHA1:" | head -1 | sed 's/.*SHA1: //')
+          {
+            echo "## Gmail sync: SHA-1 fingerprint for the Google OAuth client (Android)"
+            echo '```'; echo "$SHA1"; echo '```'
+            echo
+            echo "## Add these two repository secrets"
+            echo "Settings → Secrets and variables → Actions → New repository secret"
+            echo
+            echo "**FINANCE_BRAIN_KEYSTORE_PASSWORD**"
+            echo '```'; cat keystore-password.txt; echo '```'
+            echo
+            echo "**FINANCE_BRAIN_KEYSTORE_BASE64** (download the artifact below and paste the whole contents of keystore-base64.txt)"
+            echo
+            echo "Keep the artifact somewhere safe. If the key is lost, phones must uninstall and reinstall once."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: finance-brain-signing-key
+          path: |
+            finance-brain.jks
+            keystore-base64.txt
+            keystore-password.txt
+          retention-days: 7

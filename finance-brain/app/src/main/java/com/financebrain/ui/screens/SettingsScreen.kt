@@ -1,0 +1,167 @@
+package com.financebrain.ui.screens
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.financebrain.sms.ScanProgress
+import com.financebrain.ui.HomeState
+import com.financebrain.ui.components.SectionCard
+import com.financebrain.ui.components.SectionTitle
+
+@Composable
+fun SettingsScreen(
+    state: HomeState,
+    scan: ScanProgress?,
+    smsGranted: Boolean,
+    padding: PaddingValues,
+    onRequestSms: () -> Unit,
+    onOpenAppSettings: () -> Unit,
+    onRescan: (full: Boolean) -> Unit,
+    update: com.financebrain.update.UpdateState,
+    onCheckUpdate: () -> Unit,
+    onUpdateDownload: () -> Unit,
+    onUpdateInstall: () -> Unit,
+    gmail: List<com.financebrain.gmail.GmailAccount>,
+    gmailProgress: com.financebrain.gmail.GmailSyncProgress?,
+    gmailClientId: String,
+    gmailError: String?,
+    onGmailClientId: (String) -> Unit,
+    onGmailAdd: () -> Unit,
+    onGmailSync: () -> Unit,
+    onGmailRemove: (String) -> Unit,
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item { Text("Settings", style = MaterialTheme.typography.headlineSmall) }
+        item {
+            SectionCard {
+                SectionTitle("Automatic tracking")
+                Row(Modifier.fillMaxWidth()) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Bank SMS alerts", style = MaterialTheme.typography.bodyLarge)
+                        Text(if (smsGranted) "On · new alerts are added instantly" else "Permission needed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (!smsGranted) Button(onClick = onRequestSms) { Text("Allow") }
+                }
+                if (!smsGranted) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "If Allow is greyed out or does nothing: open App info → tap the ⋮ menu (top right) → Allow restricted settings → then Permissions → SMS → Allow. Android requires this once for apps installed outside the Play Store.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onOpenAppSettings) { Text("Open app settings") }
+                }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Gmail sync")
+                if (gmailClientId.isBlank()) {
+                    var draft by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+                    Text(
+                        "Google requires a one-time OAuth client for apps that read Gmail. Create it under your Google account (see README), then paste the Android Client ID here.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    androidx.compose.material3.OutlinedTextField(
+                        value = draft, onValueChange = { draft = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Client ID (…apps.googleusercontent.com)") }
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(onClick = { onGmailClientId(draft) }, enabled = draft.contains("apps.googleusercontent.com")) { Text("Save") }
+                } else {
+                    if (gmail.isEmpty()) Text("No accounts connected yet. Bank, card, UPI and order emails will be read and matched against your SMS transactions.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    gmail.forEach { a ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(a.email, style = MaterialTheme.typography.bodyLarge)
+                                val p = gmailProgress
+                                val status = when {
+                                    p != null && p.email == a.email && !p.done -> "Syncing… ${p.fetched} read, ${p.imported} new"
+                                    a.lastError != null -> "Error: ${a.lastError}"
+                                    a.lastSyncAt == 0L -> "Not synced yet"
+                                    else -> "${a.imported} imported · last sync ${com.financebrain.ui.formatDay(a.lastSyncAt)} ${com.financebrain.ui.formatTime(a.lastSyncAt)}" + if (a.historyComplete) "" else " · history in progress"
+                                }
+                                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            androidx.compose.material3.TextButton(onClick = { onGmailRemove(a.email) }) { Text("Remove") }
+                        }
+                    }
+                    if (gmailError != null) Text(gmailError, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(onClick = onGmailAdd) { Text(if (gmail.isEmpty()) "Connect Gmail" else "Add account") }
+                        if (gmail.isNotEmpty()) OutlinedButton(onClick = onGmailSync, enabled = gmailProgress?.done != false) { Text("Sync now") }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text("Syncs automatically every 4 hours on Wi-Fi or data. Read-only access; emails stay on this phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    androidx.compose.material3.TextButton(onClick = { onGmailClientId("") }) { Text("Change client ID") }
+                }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("SMS history")
+                Text("${state.totalCount} transactions · ${state.accounts.size} accounts", style = MaterialTheme.typography.bodyMedium)
+                if (scan != null && !scan.done) Text("Scanning ${scan.scanned}/${scan.total}…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { onRescan(false) }, enabled = smsGranted && scan?.done != false) { Text("Scan new messages") }
+                    OutlinedButton(onClick = { onRescan(true) }, enabled = smsGranted && scan?.done != false) { Text("Full rescan") }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Full rescan rebuilds everything from SMS with the latest parser. Cash entries and your category corrections are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("App updates")
+                Text("Installed version ${com.financebrain.BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
+                val status = when (update) {
+                    is com.financebrain.update.UpdateState.Checking -> "Checking…"
+                    is com.financebrain.update.UpdateState.UpToDate -> "You have the latest build."
+                    is com.financebrain.update.UpdateState.Available -> "Version ${update.update.versionName} is available."
+                    is com.financebrain.update.UpdateState.Downloading -> "Downloading ${(update.progress * 100).toInt()}%"
+                    is com.financebrain.update.UpdateState.ReadyToInstall -> "Downloaded. Tap Install."
+                    is com.financebrain.update.UpdateState.Failed -> "Check failed: ${update.message}"
+                    else -> "New builds are published automatically with every code change."
+                }
+                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    when (update) {
+                        is com.financebrain.update.UpdateState.Available -> Button(onClick = onUpdateDownload) { Text("Download update") }
+                        is com.financebrain.update.UpdateState.ReadyToInstall -> Button(onClick = onUpdateInstall) { Text("Install") }
+                        else -> OutlinedButton(onClick = onCheckUpdate, enabled = update !is com.financebrain.update.UpdateState.Checking && update !is com.financebrain.update.UpdateState.Downloading) { Text("Check for updates") }
+                    }
+                }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Supported banks")
+                Text("SBI · HDFC · ICICI · Federal Bank · PhonePe · Axis · Kotak · Paytm", style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(6.dp))
+                Text("Raw messages never leave this phone. Everything is stored in a local database.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
