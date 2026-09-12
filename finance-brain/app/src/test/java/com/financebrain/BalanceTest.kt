@@ -108,6 +108,17 @@ class BalanceTest {
         assertEquals(20_000_00L, w.paise)
     }
 
+    @Test fun paymentsStampedAtMidnightStillComeOffAnOpeningBalance() {
+        // Alerts carry a date but no clock time, so a payment can land on the same instant as
+        // the opening balance you entered for that day. It still has to count.
+        val openingOfToday = 1_757_000_000_000L
+        val rows = listOf(tx(4_000_00, Direction.DEBIT, openingOfToday))
+        val anchor = BalanceAnchor("ALL", 20_000_00, openingOfToday)
+        val w = Insights.wallet(rows, listOf(anchor), openingOfToday + day)!!
+        assertEquals(4_000_00L, w.debitsPaise)
+        assertEquals(16_000_00L, w.paise)
+    }
+
     @Test fun theWorkingIsAvailableForOneAccount() {
         val rows = listOf(
             tx(1_000_00, Direction.DEBIT, now - 2 * day, balance = 20_000_00),

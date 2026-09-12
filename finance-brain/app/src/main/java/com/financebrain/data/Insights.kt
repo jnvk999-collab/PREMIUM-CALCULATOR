@@ -79,13 +79,13 @@ object Insights {
         t.source != Source.MANUAL && !t.isTransfer && t.category != Categories.CARD_BILL &&
             t.bank !in com.financebrain.parser.BankSmsParser.investmentPlatforms
 
-    private fun netFlow(rows: List<Transaction>, from: Long, to: Long): Long =
-        rows.filter { it.timestamp > from && it.timestamp <= to && movesBankMoney(it) }
+    private fun netFlow(rows: List<Transaction>, from: Long, to: Long, inclusive: Boolean = false): Long =
+        rows.filter { (if (inclusive) it.timestamp >= from else it.timestamp > from) && it.timestamp <= to && movesBankMoney(it) }
             .sumOf { if (it.direction == Direction.CREDIT) it.amountPaise else -it.amountPaise }
 
     /** Balance at [at] carried forward (or backward) from a user-entered anchor. */
     fun runningBalance(rows: List<Transaction>, anchor: BalanceAnchor, at: Long): Long =
-        if (at >= anchor.at) anchor.amountPaise + netFlow(rows, anchor.at, at)
+        if (at >= anchor.at) anchor.amountPaise + netFlow(rows, anchor.at, at, inclusive = true)
         else anchor.amountPaise - netFlow(rows, at, anchor.at)
 
     /**
@@ -113,7 +113,9 @@ object Insights {
             anchor != null -> return BalanceBuild(anchor.amountPaise, anchor.at, true, 0, 0)
             else -> return null
         }
-        val after = bankRows.filter { it.timestamp > baseAt && it.timestamp <= at }
+        // Your own figure is the opening balance for that moment, so everything from it counts;
+        // a bank's figure already includes the alert that quoted it, so that one does not.
+        val after = bankRows.filter { (if (useAnchor) it.timestamp >= baseAt else it.timestamp > baseAt) && it.timestamp <= at }
         return BalanceBuild(
             basePaise, baseAt, useAnchor,
             after.filter { it.direction == Direction.CREDIT }.sumOf { it.amountPaise },
@@ -142,7 +144,7 @@ object Insights {
             baseAt = builds.maxOf { it.baseAt }
             fromUser = builds.any { it.fromUser }
         }
-        val rows = all.filter { it.timestamp > baseAt && it.timestamp <= at && movesYourMoney(it) }
+        val rows = all.filter { (if (fromUser) it.timestamp >= baseAt else it.timestamp > baseAt) && it.timestamp <= at && movesYourMoney(it) }
         return BalanceBuild(
             basePaise, baseAt, fromUser,
             rows.filter { it.direction == Direction.CREDIT }.sumOf { it.amountPaise },

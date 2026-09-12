@@ -184,7 +184,7 @@ object BankSmsParser {
             channel = "INVEST",
             reference = ref,
             balancePaise = null,
-            timestamp = extractDate(text) ?: receivedAt,
+            timestamp = resolveTime(text, receivedAt),
             accountKind = "INVEST",
         )
     }
@@ -217,7 +217,7 @@ object BankSmsParser {
         val isCard = Regex("""\bcredit\s*card\b|\brupay\s*credit\b|\bcard\s*(?:ending|no\.?|xx|x\d)""", RegexOption.IGNORE_CASE).containsMatchIn(text) ||
             (Regex("""\bcard\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) && !Regex("""\b(a/?c|account)\b""", RegexOption.IGNORE_CASE).containsMatchIn(text))
         val counterparty = extractCounterparty(text, channel) ?: defaultCounterparty(channel, bank)
-        val timestamp = extractDate(text) ?: receivedAt
+        val timestamp = resolveTime(text, receivedAt)
 
         return ParsedTransaction(
             amountPaise = amount,
@@ -298,6 +298,20 @@ object BankSmsParser {
         s = s.replace(Regex("""^(?:VPA|UPI)\s+""", RegexOption.IGNORE_CASE), "")
         s = s.replace(Regex("""\s+(?:on|ref|via)$""", RegexOption.IGNORE_CASE), "")
         return s.trim()
+    }
+
+    /**
+     * Alerts carry a date but no clock time, so the date alone would stamp every payment at
+     * midnight. When the body's date is the day the message arrived, the arrival time is the
+     * truthful stamp; only an alert about another day falls back to the date in the text.
+     */
+    private fun resolveTime(text: String, receivedAt: Long): Long {
+        val d = extractDate(text) ?: return receivedAt
+        val a = java.util.Calendar.getInstance().apply { timeInMillis = d }
+        val b = java.util.Calendar.getInstance().apply { timeInMillis = receivedAt }
+        val sameDay = a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) &&
+            a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR)
+        return if (sameDay) receivedAt else d
     }
 
     private fun extractDate(text: String): Long? {
