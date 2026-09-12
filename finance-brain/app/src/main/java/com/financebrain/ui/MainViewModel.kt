@@ -73,9 +73,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }.onFailure { _gmailError.value = it.message }
     }
 
-    fun removeGmail(email: String) { gmailAccounts.remove(email); _gmail.value = gmailAccounts.list() }
+    fun removeGmail(email: String) { gmailAccounts.remove(email); _gmail.value = gmailAccounts.list(); _gmailError.value = null }
+    fun clearGmailError() { _gmailError.value = null }
 
     fun syncGmail() = viewModelScope.launch {
+        _gmailError.value = null
         gmailSyncer.syncAll()
         _gmail.value = gmailAccounts.list()
     }

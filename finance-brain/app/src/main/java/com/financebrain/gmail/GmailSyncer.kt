@@ -3,8 +3,10 @@ package com.financebrain.gmail
 import android.content.Context
 import com.financebrain.data.Source
 import com.financebrain.data.TransactionRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.io.IOException
 
 data class GmailSyncProgress(val email: String, val fetched: Int, val imported: Int, val done: Boolean, val error: String? = null)
 
@@ -25,6 +27,26 @@ class GmailSyncer(private val context: Context, private val repo: TransactionRep
         try { for (email in accounts.emails()) syncOne(email, maxMessagesPerAccount) } finally { running = false }
     }
 
+    /** Network hiccups are common on phones; retry a few times before giving up on a page. */
+    private suspend fun <T> withRetry(block: suspend () -> T): T {
+        var last: Exception? = null
+        repeat(4) { attempt ->
+            try { return block() } catch (e: IOException) { last = e; delay(1500L * (attempt + 1)) }
+        }
+        throw last!!
+    }
+
+    private fun friendly(e: Exception): String {
+        val m = e.message ?: ""
+        return when {
+            e is java.net.UnknownHostException || m.contains("Unable to resolve host") -> "No internet connection. Will retry on the next sync."
+            m.contains("timed out", true) -> "Connection timed out. Will retry on the next sync."
+            m.contains("401") || m.contains("invalid_grant") -> "Google sign-in expired. Remove and add the account again."
+            m.contains("403") -> "Gmail access was refused. Check the account is a test user in Google Cloud."
+            else -> m.ifBlank { "Sync failed" }
+        }
+    }
+
     suspend fun syncOne(email: String, maxMessages: Int) {
         val state = accounts.authState(email) ?: return
         val client = GmailClient(context, state) { accounts.save(email, it) }
@@ -36,10 +58,10 @@ class GmailSyncer(private val context: Context, private val repo: TransactionRep
             var page: String? = if (meta.historyComplete) null else accounts.cursor(email)
             var more = true
             while (more && fetched < maxMessages) {
-                val (ids, next) = client.listIds(query, page)
+                val (ids, next) = withRetry { client.listIds(query, page) }
                 for (id in ids) {
                     if (repo.isEmailProcessed(id)) continue
-                    val msg = try { client.message(id) } catch (e: Exception) { continue }
+                    val msg = try { withRetry { client.message(id) } } catch (e: IOException) { throw e } catch (e: Exception) { continue }
                     fetched++
                     val parsed = EmailParser.parse(msg)
                     var stored = false
@@ -56,8 +78,10 @@ class GmailSyncer(private val context: Context, private val repo: TransactionRep
             accounts.updateMeta(email, lastSyncAt = System.currentTimeMillis(), importedDelta = imported, clearError = true)
             _progress.value = GmailSyncProgress(email, fetched, imported, true)
         } catch (e: Exception) {
-            accounts.updateMeta(email, lastError = e.message ?: "Sync failed")
-            _progress.value = GmailSyncProgress(email, fetched, imported, true, e.message)
+            val msg = friendly(e)
+            // Keep what was imported so far; the saved page cursor lets the next run resume.
+            accounts.updateMeta(email, importedDelta = imported, lastError = msg)
+            _progress.value = GmailSyncProgress(email, fetched, imported, true, msg)
         }
     }
 }

@@ -162,7 +162,7 @@ private fun App(vm: MainViewModel) {
             Tab.Insights -> InsightsScreen(state, padding)
             Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { requestSms() }, { openAppSettings() }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate,
                 gmail, gmailProgress, gmailClientId, gmailError, vm::setGmailClientId,
-                { gmailLauncher.launch(vm.gmailAuth.signInIntent(gmailClientId)) }, vm::syncGmail, vm::removeGmail)
+                { vm.clearGmailError(); gmailLauncher.launch(vm.gmailAuth.signInIntent(gmailClientId)) }, vm::syncGmail, vm::removeGmail)
         }
     }
 
