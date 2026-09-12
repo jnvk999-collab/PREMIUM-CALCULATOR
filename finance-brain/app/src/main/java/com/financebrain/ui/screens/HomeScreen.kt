@@ -103,9 +103,9 @@ fun HomeScreen(
                 Text(formatRupees(left), style = MaterialTheme.typography.displaySmall, color = leftColor, fontFamily = FontFamily.Monospace)
                 Text(
                     if (w != null)
-                        "${formatRupees(w.basePaise)} on ${formatDay(w.baseAt)}" +
-                            (if (w.creditsPaise > 0) " + ${compactRupees(w.creditsPaise)} in" else "") +
-                            (if (w.debitsPaise > 0) " − ${compactRupees(w.debitsPaise)} out" else "")
+                        (if (w.fromUser) "You entered ${formatRupees(w.basePaise)} " else "Bank reported ${formatRupees(w.basePaise)} ") + whenDay(w.baseAt) +
+                            (if (w.creditsPaise > 0) " · +${compactRupees(w.creditsPaise)} in" else "") +
+                            (if (w.debitsPaise > 0) " · −${compactRupees(w.debitsPaise)} out" else "")
                     else "Enter today's bank balance and this runs forward from there",
                     style = MaterialTheme.typography.bodySmall, color = p.t2
                 )
@@ -204,6 +204,12 @@ private fun Tile(label: String, value: String, color: Color, modifier: Modifier,
         Text(label, style = MaterialTheme.typography.labelSmall, color = color)
         Text(value, style = MaterialTheme.typography.titleMedium, color = color, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
+}
+
+/** "today" / "yesterday" / "on 5 Sep", so the line reads as a sentence. */
+private fun whenDay(ts: Long): String {
+    val d = formatDay(ts)
+    return if (d == "Today" || d == "Yesterday") d.lowercase() else "on $d"
 }
 
 /** One bar: how much of what you had has gone. */

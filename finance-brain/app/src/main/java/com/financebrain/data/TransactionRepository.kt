@@ -212,11 +212,11 @@ class TransactionRepository(
         fun words(t: Transaction) = t.counterparty.lowercase().split(Regex("""[^a-z0-9]+""")).filter { it.length >= 4 }
         val dw = words(d)
         val cw = words(c)
-        if (dw.isEmpty() || cw.isEmpty()) return true
         if (Categorizer.merchantKey(d.counterparty) == Categorizer.merchantKey(c.counterparty)) return true
-        if (dw.all { it in selfWords } || cw.all { it in selfWords }) return true
+        if (dw.isNotEmpty() && dw.all { it in selfWords }) return true
+        if (cw.isNotEmpty() && cw.all { it in selfWords }) return true
         if (dw.any { c.bank.lowercase().contains(it) } || cw.any { d.bank.lowercase().contains(it) }) return true
-        return dw.any { it in cw }
+        return dw.isNotEmpty() && cw.isNotEmpty() && dw.any { it in cw }
     }
 
     suspend fun detectInternalTransfers(): Int {

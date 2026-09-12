@@ -70,6 +70,15 @@ object Insights {
     private fun movesBankMoney(t: Transaction) =
         t.source != Source.MANUAL && t.accountKind != "CARD" && t.bank !in com.financebrain.parser.BankSmsParser.investmentPlatforms
 
+    /**
+     * Movements that change what you actually have. A card spend is money gone even though it leaves
+     * the bank later, so it counts here; paying the card bill afterwards would count it twice, so it
+     * does not. Money moved between your own accounts is not a movement at all.
+     */
+    private fun movesYourMoney(t: Transaction) =
+        t.source != Source.MANUAL && !t.isTransfer && t.category != Categories.CARD_BILL &&
+            t.bank !in com.financebrain.parser.BankSmsParser.investmentPlatforms
+
     private fun netFlow(rows: List<Transaction>, from: Long, to: Long): Long =
         rows.filter { it.timestamp > from && it.timestamp <= to && movesBankMoney(it) }
             .sumOf { if (it.direction == Direction.CREDIT) it.amountPaise else -it.amountPaise }
@@ -112,22 +121,32 @@ object Insights {
         )
     }
 
-    /** The same working, added up across every account: what you have, and how it got there. */
+    /**
+     * What you have, and how it got there: a starting figure and everything that has moved since,
+     * across every account and card. Card spends count as money gone; card bill payments do not,
+     * because that money was already counted when the card was swiped.
+     */
     fun wallet(all: List<Transaction>, anchors: List<BalanceAnchor>, at: Long): BalanceBuild? {
-        anchors.firstOrNull { it.isTotal }?.let { a ->
-            val rows = all.filter { it.timestamp > a.at && it.timestamp <= at && movesBankMoney(it) }
-            return BalanceBuild(
-                a.amountPaise, a.at, true,
-                rows.filter { it.direction == Direction.CREDIT }.sumOf { it.amountPaise },
-                rows.filter { it.direction == Direction.DEBIT }.sumOf { it.amountPaise },
-            )
+        val total = anchors.firstOrNull { it.isTotal }
+        val basePaise: Long
+        val baseAt: Long
+        val fromUser: Boolean
+        if (total != null) {
+            basePaise = total.amountPaise; baseAt = total.at; fromUser = true
+        } else {
+            val builds = all.filter { it.accountTail != null && it.accountKind != "CARD" }
+                .groupBy { it.bank + "|" + it.accountTail }
+                .mapNotNull { (key, rows) -> accountBalance(rows, anchors.firstOrNull { it.key == key }, at) }
+            if (builds.isEmpty()) return null
+            basePaise = builds.sumOf { it.basePaise }
+            baseAt = builds.maxOf { it.baseAt }
+            fromUser = builds.any { it.fromUser }
         }
-        val builds = all.filter { it.accountTail != null }.groupBy { it.bank + "|" + it.accountTail }
-            .mapNotNull { (key, rows) -> accountBalance(rows, anchors.firstOrNull { it.key == key }, at) }
-        if (builds.isEmpty()) return null
+        val rows = all.filter { it.timestamp > baseAt && it.timestamp <= at && movesYourMoney(it) }
         return BalanceBuild(
-            builds.sumOf { it.basePaise }, builds.maxOf { it.baseAt }, builds.any { it.fromUser },
-            builds.sumOf { it.creditsPaise }, builds.sumOf { it.debitsPaise },
+            basePaise, baseAt, fromUser,
+            rows.filter { it.direction == Direction.CREDIT }.sumOf { it.amountPaise },
+            rows.filter { it.direction == Direction.DEBIT }.sumOf { it.amountPaise },
         )
     }
 
