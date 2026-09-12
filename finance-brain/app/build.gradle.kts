@@ -30,9 +30,16 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "UPDATE_REPO_OWNER", "\"$updateRepoOwner\"")
         buildConfigField("String", "UPDATE_REPO_NAME", "\"$updateRepoName\"")
-        // Optional default Google OAuth client id (Android type). Can also be entered in-app.
-        buildConfigField("String", "GMAIL_CLIENT_ID", "\"${System.getenv("GMAIL_CLIENT_ID") ?: ""}\"")
-        manifestPlaceholders["appAuthRedirectScheme"] = "com.financebrain"
+        // Google OAuth client id (Android type), baked in at build time from CI secrets.
+        // Google only accepts a sign-in return address derived from the client id, so the
+        // redirect scheme must be known when the manifest is built.
+        val gmailClientId = (System.getenv("GMAIL_CLIENT_ID") ?: "").trim()
+        val redirectScheme = if (gmailClientId.endsWith(".apps.googleusercontent.com"))
+            "com.googleusercontent.apps." + gmailClientId.removeSuffix(".apps.googleusercontent.com")
+        else "com.financebrain"
+        buildConfigField("String", "GMAIL_CLIENT_ID", "\"$gmailClientId\"")
+        buildConfigField("String", "GMAIL_REDIRECT_SCHEME", "\"$redirectScheme\"")
+        manifestPlaceholders["appAuthRedirectScheme"] = redirectScheme
     }
 
     signingConfigs {

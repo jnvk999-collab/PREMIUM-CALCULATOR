@@ -62,6 +62,7 @@ jobs:
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/finance-brain.jks
           KEYSTORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD_CLEAN }}
+          GMAIL_CLIENT_ID: ${{ secrets.FINANCE_BRAIN_GMAIL_CLIENT_ID }}
         run: |
           ./gradlew assembleRelease --no-daemon
           cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/finance-brain.apk"

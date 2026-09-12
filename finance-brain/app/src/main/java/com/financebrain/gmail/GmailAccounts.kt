@@ -25,7 +25,7 @@ class GmailAccounts(context: Context) {
     )
 
     var clientId: String
-        get() = prefs.getString("client_id", null)?.takeIf { it.isNotBlank() } ?: BuildConfig.GMAIL_CLIENT_ID
+        get() = BuildConfig.GMAIL_CLIENT_ID.ifBlank { prefs.getString("client_id", null) ?: "" }
         set(v) { prefs.edit().putString("client_id", v.trim()).apply() }
 
     fun list(): List<GmailAccount> = emails().map { e ->

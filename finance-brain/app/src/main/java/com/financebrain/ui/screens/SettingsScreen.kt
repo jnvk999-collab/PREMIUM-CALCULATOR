@@ -74,7 +74,13 @@ fun SettingsScreen(
         item {
             SectionCard {
                 SectionTitle("Gmail sync")
-                if (gmailClientId.isBlank()) {
+                val baked = com.financebrain.BuildConfig.GMAIL_CLIENT_ID.isNotBlank()
+                if (!baked) {
+                    Text(
+                        "This build has no Google client configured. Add the FINANCE_BRAIN_GMAIL_CLIENT_ID secret in GitHub and the next update will enable Gmail sync.",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else if (gmailClientId.isBlank()) {
                     var draft by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
                     Text(
                         "Google requires a one-time OAuth client for apps that read Gmail. Create it under your Google account (see README), then paste the Android Client ID here.",
@@ -113,7 +119,7 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(6.dp))
                     Text("Syncs automatically every 4 hours on Wi-Fi or data. Read-only access; emails stay on this phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    androidx.compose.material3.TextButton(onClick = { onGmailClientId("") }) { Text("Change client ID") }
+
                 }
             }
         }

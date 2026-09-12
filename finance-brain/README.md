@@ -52,8 +52,10 @@ OAuth client, created under your own Google account:
    Test users add every Gmail address you want to sync.
 5. Credentials → Create credentials → OAuth client ID → **Android**.
    Package name `com.financebrain`, SHA-1 from step 1.
-6. Copy the Client ID (ends in `apps.googleusercontent.com`) and paste it into
-   Settings → Gmail sync in the app. Then tap Connect Gmail and pick an account.
+6. Copy the Client ID (ends in `apps.googleusercontent.com`) and add it as the
+   repository secret `FINANCE_BRAIN_GMAIL_CLIENT_ID`. The next build bakes it in
+   (Google requires the sign-in return address to be derived from the client id).
+   Update the app, then Settings → Gmail sync → Connect Gmail.
 
 While the consent screen is in Testing mode Google expires the login every 7 days.
 Publishing the consent screen (no verification needed for personal use) removes that.

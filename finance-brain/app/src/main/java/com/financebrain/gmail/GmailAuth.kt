@@ -22,7 +22,7 @@ class GmailAuth(private val context: Context) {
     private val service = AuthorizationService(context)
 
     fun signInIntent(clientId: String): Intent {
-        val req = AuthorizationRequest.Builder(config, clientId, ResponseTypeValues.CODE, Uri.parse("com.financebrain:/oauth2redirect"))
+        val req = AuthorizationRequest.Builder(config, clientId, ResponseTypeValues.CODE, Uri.parse("${com.financebrain.BuildConfig.GMAIL_REDIRECT_SCHEME}:/oauth2redirect"))
             .setScope("https://www.googleapis.com/auth/gmail.readonly")
             .setPrompt("select_account consent")
             .setAdditionalParameters(mapOf("access_type" to "offline"))
