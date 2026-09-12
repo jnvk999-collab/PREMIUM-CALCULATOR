@@ -215,6 +215,15 @@ class TransactionRepository(
         return changed.size / 2
     }
 
+    /** Make sure every card seen in alerts has a card row, and fix rows mislabelled as bank. */
+    suspend fun syncCardsFromTransactions() {
+        db.transactions().relabelCards()
+        for (r in db.transactions().cardRefs()) {
+            if ("${r.bank}|${r.accountTail}" in ignoredAccounts()) continue
+            if (db.cards().get(r.key) == null) db.cards().upsert(CreditCard(r.key, "${r.bank} Card ··${r.accountTail}", r.bank, r.accountTail, null, 1))
+        }
+    }
+
     /** Drop account rows that never received a balance (created by older parser versions). */
     suspend fun pruneAccounts() = db.accounts().deleteWithoutBalance()
 

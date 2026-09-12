@@ -184,6 +184,7 @@ fun AddTransactionSheet(
 @Composable
 fun SetBalanceSheet(
     accounts: List<com.financebrain.data.Account>,
+    accountViews: List<com.financebrain.ui.AccountView> = emptyList(),
     anchors: List<com.financebrain.data.BalanceAnchor>,
     onDismiss: () -> Unit,
     onSave: (key: String, amountPaise: Long) -> Unit,
@@ -208,9 +209,10 @@ fun SetBalanceSheet(
             Spacer(Modifier.height(6.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = target == "ALL", onClick = { target = "ALL" }, label = { Text("All accounts combined") })
-                accounts.forEach { a ->
-                    val k = "${a.bank}|${a.accountTail}"
-                    FilterChip(selected = target == k, onClick = { target = k }, label = { Text("${a.bank} ··${a.accountTail}") })
+                val options = (accountViews.filter { !it.isCard }.map { it.bank to it.tail } + accounts.map { it.bank to it.accountTail }).distinct()
+                options.forEach { (bank, tail) ->
+                    val k = "$bank|$tail"
+                    FilterChip(selected = target == k, onClick = { target = k }, label = { Text("$bank ··$tail") })
                 }
             }
             if (existing != null) {

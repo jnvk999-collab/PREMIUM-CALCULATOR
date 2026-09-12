@@ -77,6 +77,13 @@ interface TransactionDao {
     @Query("DELETE FROM transactions WHERE bank = :bank AND accountTail = :tail")
     suspend fun deleteByAccount(bank: String, tail: String)
 
+    /** Re-label rows whose text names a credit card but were stored as bank movements. */
+    @Query("UPDATE transactions SET accountKind = 'CARD' WHERE accountKind = 'BANK' AND accountTail IS NOT NULL AND (lower(rawText) LIKE '%credit card%' OR lower(rawText) LIKE '%rupay credit%' OR lower(rawText) LIKE '%card xx%' OR lower(rawText) LIKE '%card ending%')")
+    suspend fun relabelCards(): Int
+
+    @Query("SELECT DISTINCT bank, accountTail, accountKind FROM transactions WHERE accountKind = 'CARD' AND accountTail IS NOT NULL")
+    suspend fun cardRefs(): List<AccountRef>
+
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
     fun all(): Flow<List<Transaction>>
 

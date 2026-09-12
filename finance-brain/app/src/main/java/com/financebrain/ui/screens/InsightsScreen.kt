@@ -54,29 +54,30 @@ import com.financebrain.ui.theme.Coral
 import com.financebrain.ui.theme.Leaf
 import com.financebrain.ui.theme.Teal
 
-private val segments = listOf("Trends", "Recurring", "Cards", "Calendar", "Investments", "Loans & Salary", "Goals", "Discipline")
+private val sectionTitles = mapOf(
+    "trends" to "Trends", "recurring" to "Recurring", "cards" to "Cards", "calendar" to "Calendar",
+    "invest" to "Investments", "emis" to "Loans & Salary", "goals" to "Goals", "discipline" to "Discipline",
+)
 
+/** One Money section at a time; the top tab strip chooses which. */
 @Composable
-fun InsightsScreen(state: HomeState, plan: com.financebrain.ui.PlanState, vm: com.financebrain.ui.MainViewModel, padding: PaddingValues, initial: Int = 0, onOpenSettings: () -> Unit = {}) {
-    var seg by rememberSaveable(initial) { mutableStateOf(initial) }
+fun InsightsScreen(state: HomeState, plan: com.financebrain.ui.PlanState, vm: com.financebrain.ui.MainViewModel, padding: PaddingValues, section: String, onOpenSettings: () -> Unit = {}) {
     LazyColumn(
-        contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(14.dp, padding.calculateTopPadding() + 6.dp, 14.dp, padding.calculateBottomPadding() + 96.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item { Text("Money", style = MaterialTheme.typography.headlineSmall) }
         item {
-            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(segments.size) { i -> FilterChip(selected = seg == i, onClick = { seg = i }, label = { Text(segments[i]) }) }
-            }
+            Text((sectionTitles[section] ?: section).uppercase(), style = MaterialTheme.typography.labelSmall, color = com.financebrain.ui.theme.DarkPalette.t2)
+            Text(formatCycle(state.month), style = MaterialTheme.typography.titleMedium)
         }
-        when (seg) {
-            0 -> trends(state)
-            1 -> recurring(state)
-            2 -> cardsSection(plan, vm)
-            3 -> calendarSection(state, plan)
-            4 -> { holdingsSection(plan, vm); investments(state) }
-            5 -> { formalLoansSection(plan, vm); loansAndSalary(state) }
-            6 -> goalsSection(plan, vm)
+        when (section) {
+            "trends" -> trends(state)
+            "recurring" -> recurring(state)
+            "cards" -> cardsSection(plan, vm)
+            "calendar" -> calendarSection(state, plan)
+            "invest" -> { holdingsSection(plan, vm); investments(state) }
+            "emis" -> { formalLoansSection(plan, vm); loansAndSalary(state) }
+            "goals" -> goalsSection(plan, vm)
             else -> disciplineSection(plan, vm, onOpenSettings)
         }
     }

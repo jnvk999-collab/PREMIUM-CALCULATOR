@@ -195,7 +195,8 @@ object BankSmsParser {
         val amount = extractAmount(text) ?: return null
         if (amount <= 0) return null
 
-        val tail = tailRe.find(text)?.groupValues?.get(1)?.takeLast(4)
+        val cardTail = Regex("""\bcard\s*(?:no\.?\s*)?(?:ending\s*)?(?:in\s*)?[:\s]*[xX*]*(\d{2,6})\b""", RegexOption.IGNORE_CASE).find(text)?.groupValues?.get(1)?.takeLast(4)
+        val tail = cardTail ?: tailRe.find(text)?.groupValues?.get(1)?.takeLast(4)
         val balance = balanceRe.find(text)?.groupValues?.get(1)?.let(::toPaise)
         val reference = refRe.find(text)?.groupValues?.get(1)?.takeIf { it.length in 6..24 }
 
@@ -207,8 +208,9 @@ object BankSmsParser {
         if (promoHits >= 2 || (promoHits >= 1 && urlRe.containsMatchIn(text))) return null
         if (urlRe.containsMatchIn(text) && reference == null && balance == null) return null
         val channel = detectChannel(text)
-        val isCard = Regex("""\bcard\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) &&
-            !Regex("""\b(a/?c|account)\b""", RegexOption.IGNORE_CASE).containsMatchIn(text)
+        // Credit cards, including RuPay credit cards used over UPI ("from HDFC Bank Credit Card XX46 via UPI").
+        val isCard = Regex("""\bcredit\s*card\b|\brupay\s*credit\b|\bcard\s*(?:ending|no\.?|xx|x\d)""", RegexOption.IGNORE_CASE).containsMatchIn(text) ||
+            (Regex("""\bcard\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) && !Regex("""\b(a/?c|account)\b""", RegexOption.IGNORE_CASE).containsMatchIn(text))
         val counterparty = extractCounterparty(text, channel) ?: defaultCounterparty(channel, bank)
         val timestamp = extractDate(text) ?: receivedAt
 

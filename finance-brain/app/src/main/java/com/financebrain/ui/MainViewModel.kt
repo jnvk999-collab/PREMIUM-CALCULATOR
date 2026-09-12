@@ -51,6 +51,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** One row of the Home account strip: a bank account or a card with its best-known balance. */
+data class AccountView(val bank: String, val tail: String, val isCard: Boolean, val balancePaise: Long?, val source: String)
+
 data class PlanState(
     val cards: List<CardStatus> = emptyList(),
     val allocation: Allocation? = null,
@@ -93,6 +96,7 @@ data class HomeState(
     val investments: List<InvestmentLine> = emptyList(),
     val monthBalance: MonthBalance = MonthBalance(null, null, null),
     val anchors: List<BalanceAnchor> = emptyList(),
+    val accountList: List<AccountView> = emptyList(),
 ) {
     val totalBalancePaise: Long get() = monthBalance.nowPaise ?: accounts.sumOf { it.balancePaise ?: 0 }
     val hasTotalAnchor: Boolean get() = anchors.any { it.isTotal }
@@ -199,7 +203,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _scan = MutableStateFlow<ScanProgress?>(null)
     val scan: StateFlow<ScanProgress?> = _scan
 
-    val state: StateFlow<HomeState> = combine(_month, repo.transactions, repo.accounts, repo.balanceAnchors) { m, all, accounts, anchors ->
+    private val ignoredAccountsFlow = MutableStateFlow(FinanceBrainApp.get(app).ignoredAccounts())
+    val state: StateFlow<HomeState> = combine(_month, repo.transactions, repo.accounts, repo.balanceAnchors, ignoredAccountsFlow) { m, all, accounts, anchors, ignoredAcc ->
         val end = monthEnd(m)
         val inMonth = all.filter { it.timestamp in m until end }
         val now = System.currentTimeMillis()
@@ -225,6 +230,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             investments = Insights.investments(all, recurring.filter { it.direction == Direction.DEBIT }),
             monthBalance = Insights.monthBalance(all, anchors, m, end, now),
             anchors = anchors,
+            accountList = all.filter { it.accountTail != null && it.accountKind != "INVEST" }
+                .groupBy { it.bank + "|" + it.accountTail }
+                .filterKeys { it !in ignoredAcc }
+                .map { (key, ts) ->
+                    val bank = key.substringBefore('|'); val tail = key.substringAfter('|')
+                    val isCard = ts.count { it.accountKind == "CARD" } * 2 > ts.size
+                    val anchor = anchors.firstOrNull { it.key == key }
+                    val bal = when {
+                        isCard -> null
+                        anchor != null -> Insights.runningBalance(ts, anchor, now + 1)
+                        else -> ts.filter { it.balancePaise != null }.maxByOrNull { it.timestamp }?.balancePaise
+                    }
+                    AccountView(bank, tail, isCard, bal, if (anchor != null) "set by you" else if (bal != null) "from alert" else "no balance yet")
+                }.sortedWith(compareBy({ it.isCard }, { it.bank })),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState(_month.value))
 
@@ -243,7 +262,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setAccountIgnored(key: String, ignored: Boolean) = viewModelScope.launch {
         val next = _ignoredAccounts.value.toMutableSet().apply { if (ignored) add(key) else remove(key) }
-        appRef.setIgnoredAccounts(next); _ignoredAccounts.value = next
+        appRef.setIgnoredAccounts(next); _ignoredAccounts.value = next; ignoredAccountsFlow.value = next
         if (ignored) repo.purgeAccount(key.substringBefore('|'), key.substringAfter('|'))
     }
 
@@ -327,6 +346,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (full) repo.purgeSms()
             _scan.value = ScanProgress(0, 0, 0, false)
             scanner.scan { _scan.value = it }
+            repo.syncCardsFromTransactions()
             repo.detectInternalTransfers()
         }
     }

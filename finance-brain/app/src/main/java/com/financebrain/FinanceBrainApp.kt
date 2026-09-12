@@ -49,6 +49,7 @@ class FinanceBrainApp : Application() {
             repository.pruneAccounts()
             ignoredBanks().forEach { repository.purgeBank(it) }
             ignoredAccounts().forEach { k -> val b = k.substringBefore('|'); val t = k.substringAfter('|'); if (t.isNotBlank()) repository.purgeAccount(b, t) }
+            repository.syncCardsFromTransactions()
             repository.detectInternalTransfers()
         }
     }
