@@ -104,8 +104,9 @@ fun HomeScreen(
                 Text(
                     if (w != null)
                         (if (w.fromUser) "You entered ${formatRupees(w.basePaise)} " else "Bank reported ${formatRupees(w.basePaise)} ") + whenDay(w.baseAt) +
-                            (if (w.creditsPaise > 0) " · +${compactRupees(w.creditsPaise)} in" else "") +
-                            (if (w.debitsPaise > 0) " · −${compactRupees(w.debitsPaise)} out" else "")
+                            (if (w.creditsPaise > 0) " · +${formatRupees(w.creditsPaise)} in" else "") +
+                            (if (w.bankDebitsPaise > 0) " · −${formatRupees(w.bankDebitsPaise)} from your accounts" else "") +
+                            (if (w.cardDebitsPaise > 0) " · −${formatRupees(w.cardDebitsPaise)} on cards" else "")
                     else "Enter today's bank balance and this runs forward from there",
                     style = MaterialTheme.typography.bodySmall, color = p.t2
                 )
@@ -114,7 +115,10 @@ fun HomeScreen(
                     SpentBar(w.basePaise + w.creditsPaise, w.debitsPaise)
                 }
                 Spacer(Modifier.height(6.dp))
-                Text("Tap to correct the balance", style = MaterialTheme.typography.labelSmall, color = p.gold, modifier = Modifier.clickable { onSetBalance(null) })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("See every payment counted", style = MaterialTheme.typography.labelSmall, color = p.gold, modifier = Modifier.clickable { onOpen("wallet") })
+                    Text("Correct the balance", style = MaterialTheme.typography.labelSmall, color = p.gold, modifier = Modifier.clickable { onSetBalance(null) })
+                }
             }
         }
 

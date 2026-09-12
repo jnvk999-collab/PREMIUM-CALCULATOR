@@ -237,6 +237,7 @@ private fun App(vm: MainViewModel) {
             "money" -> com.financebrain.ui.screens.MoneyScreen(state, plan, vm, padding, moneySection, { moneySection = it }, ::setBalanceFor)
             "plan" -> com.financebrain.ui.screens.PlanScreen(state, plan, vm, padding, planSection, { planSection = it }) { tab = "settings" }
             "brain" -> BrainScreen(state.report, state.month, chat, hasApiKey, padding, plan.wealthSections, plan.wealthActions, vm::ask) { tab = "settings" }
+            "wallet" -> com.financebrain.ui.screens.WalletScreen(state, padding, { selected = it }, ::setBalanceFor)
             "settings" -> SettingsScreen(state, scan, smsGranted, padding, { requestSms() }, { openAppSettings() }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate,
                 gmail, gmailProgress, gmailClientId, gmailError, vm::setGmailClientId,
                 { vm.clearGmailError(); gmailLauncher.launch(vm.gmailAuth.signInIntent(gmailClientId)) }, vm::syncGmail, vm::removeGmail,

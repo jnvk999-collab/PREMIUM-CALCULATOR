@@ -95,8 +95,12 @@ object Insights {
     data class BalanceBuild(
         val basePaise: Long, val baseAt: Long, val fromUser: Boolean,
         val creditsPaise: Long, val debitsPaise: Long,
+        /** Exactly the movements that were counted, so the figure can be shown as a sum you can check. */
+        val rows: List<Transaction> = emptyList(),
     ) {
         val paise get() = basePaise + creditsPaise - debitsPaise
+        val cardDebitsPaise get() = rows.filter { it.direction == Direction.DEBIT && it.accountKind == "CARD" }.sumOf { it.amountPaise }
+        val bankDebitsPaise get() = debitsPaise - cardDebitsPaise
     }
 
     /** Null when neither you nor the bank has ever given this account a figure to start from. */
@@ -145,10 +149,12 @@ object Insights {
             fromUser = builds.any { it.fromUser }
         }
         val rows = all.filter { (if (fromUser) it.timestamp >= baseAt else it.timestamp > baseAt) && it.timestamp <= at && movesYourMoney(it) }
+            .sortedByDescending { it.timestamp }
         return BalanceBuild(
             basePaise, baseAt, fromUser,
             rows.filter { it.direction == Direction.CREDIT }.sumOf { it.amountPaise },
             rows.filter { it.direction == Direction.DEBIT }.sumOf { it.amountPaise },
+            rows,
         )
     }
 
