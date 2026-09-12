@@ -21,6 +21,11 @@ class FinanceBrainApp : Application() {
     fun dismissedReviews(): Set<String> = prefs.getStringSet("dismissed_reviews", emptySet()) ?: emptySet()
     fun dismissReview(id: String) { prefs.edit().putStringSet("dismissed_reviews", dismissedReviews() + id).apply() }
 
+    /** Totals count only transactions on or after this moment. Set to now on first launch of this version. */
+    var trackingStart: Long
+        get() = prefs.getLong("tracking_start", 0L)
+        set(v) { prefs.edit().putLong("tracking_start", v).apply() }
+
     var salaryDay: Int
         get() = prefs.getInt("salary_day", 1)
         set(v) { prefs.edit().putInt("salary_day", v.coerceIn(1, 28)).apply(); com.financebrain.ui.Cycle.salaryDay = v.coerceIn(1, 28) }
@@ -45,6 +50,9 @@ class FinanceBrainApp : Application() {
     override fun onCreate() {
         super.onCreate()
         com.financebrain.ui.Cycle.salaryDay = salaryDay
+        if (trackingStart == 0L) trackingStart = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
         GmailSyncWorker.schedule(this)
         com.financebrain.alerts.DailyAlertWorker.schedule(this)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {

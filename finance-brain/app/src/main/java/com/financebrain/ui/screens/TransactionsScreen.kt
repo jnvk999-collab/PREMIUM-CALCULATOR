@@ -38,7 +38,7 @@ import com.financebrain.ui.formatDay
 import com.financebrain.ui.formatRupees
 
 @Composable
-fun TransactionsScreen(all: List<Transaction>, padding: PaddingValues, onOpen: (Transaction) -> Unit, showHeader: Boolean = true) {
+fun TransactionsScreen(all: List<Transaction>, padding: PaddingValues, onOpen: (Transaction) -> Unit, showHeader: Boolean = true, trackingStart: Long = 0) {
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf("All") }
     val banks = remember(all) { all.map { it.bank }.distinct().sorted() }
@@ -77,7 +77,14 @@ fun TransactionsScreen(all: List<Transaction>, padding: PaddingValues, onOpen: (
         Spacer(Modifier.height(4.dp))
         LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = padding.calculateBottomPadding() + 96.dp)) {
             if (shown.isEmpty()) item { EmptyHint("No transactions match.") }
+            var dividerShown = false
             grouped.forEach { (day, list) ->
+                if (!dividerShown && trackingStart > 0 && list.first().timestamp < trackingStart) {
+                    dividerShown = true
+                    item(key = "divider") {
+                        Text("— before tracking started (not counted) —", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                }
                 item(key = "h-$day") {
                     Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(day, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))

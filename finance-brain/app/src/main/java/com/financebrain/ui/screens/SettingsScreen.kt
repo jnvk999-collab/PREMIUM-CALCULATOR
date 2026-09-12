@@ -61,12 +61,32 @@ fun SettingsScreen(
     accountRefs: List<com.financebrain.data.AccountRef> = emptyList(),
     ignoredAccounts: Set<String> = emptySet(),
     onAccountIgnored: (String, Boolean) -> Unit = { _, _ -> },
+    trackingStart: Long = 0,
+    onTrackingStart: (Long) -> Unit = {},
 ) {
     LazyColumn(
         contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item { Text("Settings", style = MaterialTheme.typography.headlineSmall) }
+        item {
+            SectionCard {
+                SectionTitle("Count from")
+                val fmt = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.ENGLISH)
+                var d by androidx.compose.runtime.remember(trackingStart) { androidx.compose.runtime.mutableStateOf(if (trackingStart > 0) fmt.format(java.util.Date(trackingStart)) else "") }
+                Text("Income, spending and the plan count only from this date. Older messages stay in Activity for reference. The balance you enter is the starting point.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    androidx.compose.material3.OutlinedTextField(d, { d = it }, label = { Text("dd/mm/yyyy") }, singleLine = true, modifier = Modifier.weight(1f))
+                    Button(onClick = { try { fmt.parse(d)?.let { onTrackingStart(it.time) } } catch (_: Exception) {} }) { Text("Save") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onTrackingStart(java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0) }.timeInMillis) }) { Text("From today") }
+                    OutlinedButton(onClick = { onTrackingStart(com.financebrain.ui.monthStart(System.currentTimeMillis())) }) { Text("From this month") }
+                    OutlinedButton(onClick = { onTrackingStart(0L) }) { Text("All history") }
+                }
+            }
+        }
         item {
             SectionCard {
                 SectionTitle("Salary cycle & plan")

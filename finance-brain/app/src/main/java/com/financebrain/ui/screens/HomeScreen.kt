@@ -194,6 +194,7 @@ private fun ReviewRow(r: ReviewItem, onReview: (ReviewItem, String) -> Unit, onS
         Row {
             when (r) {
                 is ReviewItem.BigUnknown -> { Pill("Spend") { onReview(r, "spend") }; Pill("Transfer to me") { onReview(r, "transfer") }; Pill("Investment") { onReview(r, "investment") }; Pill("Not mine") { onReview(r, "spam") } }
+                is ReviewItem.BigCredit -> { Pill("Income") { onReview(r, "income") }; Pill("Salary") { onReview(r, "salary") }; Pill("Transfer to me") { onReview(r, "transfer") }; Pill("Not mine") { onReview(r, "spam") } }
                 is ReviewItem.ConfirmSalary -> { Pill("Yes, salary") { onReview(r, "yes") }; Pill("No") { onReview(r, "dismiss") } }
                 is ReviewItem.NoBalance -> { Pill("Enter balance") { onSetBalance("${r.bank}|${r.tail}") }; Pill("Skip") { onReview(r, "dismiss") } }
                 is ReviewItem.NoLimit -> { Pill("Set limit") { onOpen("money:cards") }; Pill("Skip") { onReview(r, "dismiss") } }

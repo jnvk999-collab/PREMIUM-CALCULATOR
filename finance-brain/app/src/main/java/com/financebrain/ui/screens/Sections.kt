@@ -72,7 +72,7 @@ fun SpendScreen(state: HomeState, padding: PaddingValues, section: String, onSec
         Pills(listOf("activity" to "Activity", "categories" to "Categories", "recurring" to "Recurring"), section, onSection)
         Spacer(Modifier.height(4.dp))
         when (section) {
-            "activity" -> TransactionsScreen(state.allTransactions, PaddingValues(bottom = padding.calculateBottomPadding()), onOpen, showHeader = false)
+            "activity" -> TransactionsScreen(state.allTransactions, PaddingValues(bottom = padding.calculateBottomPadding()), onOpen, showHeader = false, trackingStart = state.trackingStart)
             "categories" -> LazyColumn(contentPadding = PaddingValues(14.dp, 6.dp, 14.dp, padding.calculateBottomPadding() + 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item {
                     SectionCard {

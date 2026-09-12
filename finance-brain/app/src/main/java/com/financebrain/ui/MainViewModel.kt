@@ -99,7 +99,10 @@ data class HomeState(
     val monthBalance: MonthBalance = MonthBalance(null, null, null),
     val anchors: List<BalanceAnchor> = emptyList(),
     val accountList: List<AccountView> = emptyList(),
+    val trackingStart: Long = 0,
 ) {
+    /** Rows that count towards totals. */
+    val tracked: List<Transaction> get() = allTransactions.filter { it.timestamp >= trackingStart }
     val totalBalancePaise: Long get() = monthBalance.nowPaise ?: accounts.sumOf { it.balancePaise ?: 0 }
     val hasTotalAnchor: Boolean get() = anchors.any { it.isTotal }
     val savedPaise: Long get() = incomePaise - expensePaise - investedPaise
@@ -206,11 +209,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val scan: StateFlow<ScanProgress?> = _scan
 
     private val ignoredAccountsFlow = MutableStateFlow(FinanceBrainApp.get(app).ignoredAccounts())
-    val state: StateFlow<HomeState> = combine(_month, repo.transactions, repo.accounts, repo.balanceAnchors, ignoredAccountsFlow) { m, all, accounts, anchors, ignoredAcc ->
+    private val trackingStartFlow = MutableStateFlow(FinanceBrainApp.get(app).trackingStart)
+    fun setTrackingStart(ts: Long) { appRef.trackingStart = ts; trackingStartFlow.value = ts }
+
+    val state: StateFlow<HomeState> = combine(
+        combine(_month, repo.transactions, repo.accounts, repo.balanceAnchors) { m, all, accounts, anchors -> arrayOf(m, all, accounts, anchors) },
+        ignoredAccountsFlow, trackingStartFlow,
+    ) { arr, ignoredAcc, trackingStart ->
+        @Suppress("UNCHECKED_CAST")
+        val m = arr[0] as Long; val all = arr[1] as List<Transaction>; val accounts = arr[2] as List<Account>; val anchors = arr[3] as List<BalanceAnchor>
         val end = monthEnd(m)
-        val inMonth = all.filter { it.timestamp in m until end }
         val now = System.currentTimeMillis()
-        val months = Insights.monthSeries(all, 12, m, anchors)
+        // Money totals count only from the tracking start; patterns (recurring, salary) may use all history.
+        val tracked = all.filter { it.timestamp >= trackingStart }
+        val inMonth = tracked.filter { it.timestamp in m until end }
+        val months = Insights.monthSeries(tracked, 12, m, anchors)
         val recurring = Insights.recurring(all, now)
         HomeState(
             month = m,
@@ -222,14 +235,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             investedPaise = inMonth.filter(Insights::isInvestment).sumOf { it.amountPaise },
             categories = Insights.categoryTotals(inMonth),
             daily = Insights.dailySpend(inMonth, daysInMonth(m)),
+            trackingStart = trackingStart,
             recurring = recurring,
             months = months,
             topMerchants = Insights.topMerchants(inMonth),
             totalCount = all.size,
-            report = if (all.isEmpty()) null else BrainAnalyzer.analyze(all, months, m, recurring, now),
+            report = if (tracked.isEmpty()) null else BrainAnalyzer.analyze(tracked, months, m, recurring, now),
             salary = Insights.salary(all, recurring.filter { it.direction == Direction.CREDIT }, now),
             loans = Insights.loans(all, recurring.filter { it.direction == Direction.DEBIT }, now),
-            investments = Insights.investments(all, recurring.filter { it.direction == Direction.DEBIT }),
+            investments = Insights.investments(tracked, recurring.filter { it.direction == Direction.DEBIT }),
             monthBalance = Insights.monthBalance(all, anchors, m, end, now),
             anchors = anchors,
             accountList = all.filter { it.accountTail != null && it.accountKind != "INVEST" }
@@ -291,17 +305,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val detectedLoans = s.loans.filter { d -> hl.second.none { kotlin.math.abs(it.emiPaise - d.emiPaise) < 2_000_00 } }
         val nw = Planning.netWorth(s.monthBalance.nowPaise, hl.first, recv, loanStatuses, statuses, loans)
         val wealth = BrainAnalyzer.wealth(nw, loanStatuses, hl.first, s.salary?.amountPaise ?: s.incomePaise)
-        val review = com.financebrain.data.Review.build(s.allTransactions, s.month, s.accountList, cards, s.salary, appRef.prefs.contains("salary_day"), appRef.dismissedReviews())
+        val review = com.financebrain.data.Review.build(s.tracked, s.month, s.accountList, cards, s.salary, appRef.prefs.contains("salary_day"), appRef.dismissedReviews())
         PlanState(
             review = review,
             holdings = hl.first, loanStatuses = loanStatuses, netWorth = nw, wealthSections = wealth.first, wealthActions = wealth.second,
             cards = statuses,
-            allocation = Planning.allocation(s.allTransactions, s.month, now, s.salary,
+            allocation = Planning.allocation(s.tracked, s.month, now, s.salary,
                 detectedLoans + hl.second.map { com.financebrain.data.LoanInfo(it.lender, it.emiPaise, Planning.dayToTs(now, it.dueDay), 0, 0, it.type) },
                 statuses, debits, appRef.investTargetPct),
             calendar = Planning.calendar(s.month, appRef.salaryDay, s.salary, s.loans, statuses, s.recurring),
             goals = goals, receivables = recv, informalLoans = loans,
-            discipline = Planning.discipline(s.allTransactions, s.month, d.first, d.second, d.third, now),
+            discipline = Planning.discipline(s.tracked, s.month, d.first, d.second, d.third, now),
             controlled = d.first, zero = d.second, entries = d.third,
             salaryDay = appRef.salaryDay, investPct = appRef.investTargetPct, budgetPaise = appRef.monthlyBudgetPaise, daughterName = appRef.daughterName,
         )
