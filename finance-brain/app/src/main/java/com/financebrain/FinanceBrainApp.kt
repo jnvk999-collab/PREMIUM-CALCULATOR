@@ -14,7 +14,9 @@ class FinanceBrainApp : Application() {
     val prefs by lazy { getSharedPreferences("finance_brain", MODE_PRIVATE) }
     fun ignoredBanks(): Set<String> = prefs.getStringSet("ignored_banks", null) ?: DEFAULT_IGNORED
     fun setIgnoredBanks(v: Set<String>) { prefs.edit().putStringSet("ignored_banks", v).apply() }
-    val repository: TransactionRepository by lazy { TransactionRepository(database) { ignoredBanks() } }
+    fun ignoredAccounts(): Set<String> = prefs.getStringSet("ignored_accounts", null) ?: DEFAULT_IGNORED_ACCOUNTS
+    fun setIgnoredAccounts(v: Set<String>) { prefs.edit().putStringSet("ignored_accounts", v).apply() }
+    val repository: TransactionRepository by lazy { TransactionRepository(database, { ignoredBanks() }, { ignoredAccounts() }) }
 
     var salaryDay: Int
         get() = prefs.getInt("salary_day", 1)
@@ -45,12 +47,15 @@ class FinanceBrainApp : Application() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             repository.pruneAccounts()
             ignoredBanks().forEach { repository.purgeBank(it) }
+            ignoredAccounts().forEach { k -> val b = k.substringBefore('|'); val t = k.substringAfter('|'); if (t.isNotBlank()) repository.purgeAccount(b, t) }
             repository.detectInternalTransfers()
         }
     }
 
     companion object {
         val DEFAULT_IGNORED = setOf("Union Bank")
+        // Accounts the owner asked not to track: an unused HDFC account and accounts on another phone.
+        val DEFAULT_IGNORED_ACCOUNTS = setOf("HDFC|7003", "Andhra Bank|2172", "Union Bank|2172", "Federal Bank|3048")
         fun get(context: Context): FinanceBrainApp = context.applicationContext as FinanceBrainApp
     }
 }

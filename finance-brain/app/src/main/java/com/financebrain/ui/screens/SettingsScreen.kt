@@ -58,6 +58,9 @@ fun SettingsScreen(
     alertEnabled: Boolean = false, alertHour: Int = 21,
     onDailyAlert: (Boolean, Int) -> Unit = { _, _ -> },
     onBackup: () -> Unit = {}, onRestore: () -> Unit = {}, onImportCsv: () -> Unit = {},
+    accountRefs: List<com.financebrain.data.AccountRef> = emptyList(),
+    ignoredAccounts: Set<String> = emptySet(),
+    onAccountIgnored: (String, Boolean) -> Unit = { _, _ -> },
 ) {
     LazyColumn(
         contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
@@ -247,6 +250,24 @@ fun SettingsScreen(
                         else -> OutlinedButton(onClick = onCheckUpdate, enabled = update !is com.financebrain.update.UpdateState.Checking && update !is com.financebrain.update.UpdateState.Downloading) { Text("Check for updates") }
                     }
                 }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Accounts")
+                Text("Every account and card seen in your messages. Switch off any that are not yours or that you do not want tracked; its entries are removed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                val seeded = ignoredAccounts.filter { k -> accountRefs.none { it.key == k } }.map { k -> com.financebrain.data.AccountRef(k.substringBefore('|'), k.substringAfter('|'), "BANK") }
+                val all = (accountRefs + seeded).distinctBy { it.key }.sortedBy { it.label }
+                if (all.isEmpty()) Text("Nothing yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    all.forEach { a ->
+                        val off = a.key in ignoredAccounts
+                        androidx.compose.material3.FilterChip(selected = off, onClick = { onAccountIgnored(a.key, !off) }, label = { Text(if (off) "✕ ${a.label}" else a.label) })
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Selected = ignored. Re-enable and run Full rescan to bring one back.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {

@@ -44,6 +44,12 @@ data class Account(
     val kind: String = "BANK",   // BANK, CARD, WALLET
 )
 
+/** A (bank, last digits) pair seen in transactions. */
+data class AccountRef(val bank: String, val accountTail: String, val accountKind: String) {
+    val key get() = "$bank|$accountTail"
+    val label get() = (if (accountKind == "CARD") "$bank card" else bank) + " ··$accountTail"
+}
+
 /** Remembered category for a merchant after the user corrects it once. */
 @Entity(tableName = "merchant_rules")
 data class MerchantRule(

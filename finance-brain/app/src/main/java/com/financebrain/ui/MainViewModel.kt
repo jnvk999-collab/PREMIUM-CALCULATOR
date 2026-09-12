@@ -218,6 +218,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val knownBanks: StateFlow<List<String>> = appRef.database.transactions().banks()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    private val _ignoredAccounts = MutableStateFlow(appRef.ignoredAccounts())
+    val ignoredAccounts: StateFlow<Set<String>> = _ignoredAccounts
+    val accountRefs: StateFlow<List<com.financebrain.data.AccountRef>> = repo.accountRefs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun setAccountIgnored(key: String, ignored: Boolean) = viewModelScope.launch {
+        val next = _ignoredAccounts.value.toMutableSet().apply { if (ignored) add(key) else remove(key) }
+        appRef.setIgnoredAccounts(next); _ignoredAccounts.value = next
+        if (ignored) repo.purgeAccount(key.substringBefore('|'), key.substringAfter('|'))
+    }
+
     fun setBankIgnored(bank: String, ignored: Boolean) = viewModelScope.launch {
         val next = _ignoredBanks.value.toMutableSet().apply { if (ignored) add(bank) else remove(bank) }
         appRef.setIgnoredBanks(next); _ignoredBanks.value = next

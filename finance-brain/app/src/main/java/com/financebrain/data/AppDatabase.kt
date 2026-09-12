@@ -64,6 +64,12 @@ interface TransactionDao {
     @Query("SELECT DISTINCT bank FROM transactions ORDER BY bank")
     fun banks(): Flow<List<String>>
 
+    @Query("SELECT DISTINCT bank, accountTail, accountKind FROM transactions WHERE accountTail IS NOT NULL ORDER BY bank, accountTail")
+    fun accountRefs(): Flow<List<AccountRef>>
+
+    @Query("DELETE FROM transactions WHERE bank = :bank AND accountTail = :tail")
+    suspend fun deleteByAccount(bank: String, tail: String)
+
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
     fun all(): Flow<List<Transaction>>
 
@@ -179,6 +185,9 @@ interface AccountDao {
 
     @Query("DELETE FROM accounts WHERE bank = :bank")
     suspend fun deleteByBank(bank: String)
+
+    @Query("DELETE FROM accounts WHERE bank = :bank AND accountTail = :tail")
+    suspend fun deleteByAccount(bank: String, tail: String)
 
     @Query("DELETE FROM accounts")
     suspend fun clear()

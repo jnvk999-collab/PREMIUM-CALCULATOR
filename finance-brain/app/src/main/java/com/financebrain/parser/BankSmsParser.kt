@@ -113,6 +113,7 @@ object BankSmsParser {
             b.contains("BSE STAR") || b.contains("BSESTAR") || b.contains("BSE LTD") || b.contains("BSE LIMITED") -> "BSE StAR MF"
             b.contains("NSE CLEARING") || b.contains("NSCCL") -> "NSE Clearing"
             b.contains("INDIAN CLEARING") || b.contains("ICCL") -> "ICCL"
+            s.contains("ANDHRA") || s.contains("ANDBNK") || b.contains("ANDHRA BANK") -> "Andhra Bank"
             s.contains("UNION") || s.contains("UBOI") || b.contains("UNION BANK") || b.contains("-UNION") -> "Union Bank"
             s.contains("AXIS") || b.contains("AXIS BANK") -> "Axis Bank"
             s.contains("KOTAK") || b.contains("KOTAK") -> "Kotak"

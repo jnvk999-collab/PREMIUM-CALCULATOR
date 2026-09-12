@@ -154,6 +154,8 @@ private fun App(vm: MainViewModel) {
     val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
     LaunchedEffect(toast) { toast?.let { snackbar.showSnackbar(it); vm.clearToast() } }
     val ignoredBanks by vm.ignoredBanks.collectAsStateWithLifecycle()
+    val accountRefs by vm.accountRefs.collectAsStateWithLifecycle()
+    val ignoredAccounts by vm.ignoredAccounts.collectAsStateWithLifecycle()
     val gmailLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { vm.finishGmailSignIn(it.data) }
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var selected by remember { mutableStateOf<Transaction?>(null) }
@@ -197,7 +199,8 @@ private fun App(vm: MainViewModel) {
                 },
                 { backupLauncher.launch("finance-brain-backup-${java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.ENGLISH).format(java.util.Date())}.json") },
                 { restoreLauncher.launch(arrayOf("application/json", "*/*")) },
-                { csvBank = "Statement"; csvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "*/*")) })
+                { csvBank = "Statement"; csvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "*/*")) },
+                accountRefs, ignoredAccounts, vm::setAccountIgnored)
         }
     }
 
