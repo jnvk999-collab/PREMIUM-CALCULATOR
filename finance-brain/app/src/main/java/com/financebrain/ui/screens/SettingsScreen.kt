@@ -53,7 +53,7 @@ fun SettingsScreen(
                 if (!smsGranted) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "If tapping Allow shows nothing, Android has blocked the prompt. Open the app's settings page, choose Permissions → SMS → Allow, then come back.",
+                        "If Allow is greyed out or does nothing: open App info → tap the ⋮ menu (top right) → Allow restricted settings → then Permissions → SMS → Allow. Android requires this once for apps installed outside the Play Store.",
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(8.dp))

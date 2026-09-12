@@ -193,6 +193,10 @@ private fun Onboarding(onAllow: () -> Unit, onOpenSettings: () -> Unit, onSkip: 
         Spacer(Modifier.height(32.dp))
         Button(onClick = onAllow, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Allow SMS access") }
         TextButton(onClick = onOpenSettings) { Text("No dialog? Open app settings") }
+        Text(
+            "Installed from a file? In App info tap the ⋮ menu → Allow restricted settings, then Permissions → SMS → Allow.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center
+        )
         TextButton(onClick = onSkip) { Text("Skip for now") }
     }
 }
