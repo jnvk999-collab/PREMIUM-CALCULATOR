@@ -66,9 +66,9 @@ object Insights {
         return out
     }
 
-    /** Movements that change a bank balance: bank alerts, not cash entries or platform confirmations. */
+    /** Movements that change a bank balance: bank-account alerts, not cash entries, card spends or platform confirmations. */
     private fun movesBankMoney(t: Transaction) =
-        t.source != Source.MANUAL && t.bank !in com.financebrain.parser.BankSmsParser.investmentPlatforms
+        t.source != Source.MANUAL && t.accountKind != "CARD" && t.bank !in com.financebrain.parser.BankSmsParser.investmentPlatforms
 
     private fun netFlow(rows: List<Transaction>, from: Long, to: Long): Long =
         rows.filter { it.timestamp > from && it.timestamp <= to && movesBankMoney(it) }
@@ -80,28 +80,52 @@ object Insights {
         else anchor.amountPaise - netFlow(rows, at, anchor.at)
 
     /**
-     * Balance across accounts at [at]. A total anchor wins; otherwise per-account anchors are
-     * carried forward and unanchored accounts fall back to the last balance a bank reported.
+     * How one account's balance was arrived at: a starting figure (what you entered, or the last
+     * balance the bank itself reported, whichever is newer) with every movement since applied.
+     */
+    data class BalanceBuild(
+        val basePaise: Long, val baseAt: Long, val fromUser: Boolean,
+        val creditsPaise: Long, val debitsPaise: Long,
+    ) {
+        val paise get() = basePaise + creditsPaise - debitsPaise
+    }
+
+    /** Null when neither you nor the bank has ever given this account a figure to start from. */
+    fun accountBalance(rows: List<Transaction>, anchor: BalanceAnchor?, at: Long): BalanceBuild? {
+        val bankRows = rows.filter(::movesBankMoney)
+        val reported = bankRows.filter { it.balancePaise != null && it.timestamp <= at }.maxByOrNull { it.timestamp }
+        val useAnchor = anchor != null && anchor.at <= at && (reported == null || anchor.at >= reported.timestamp)
+        val basePaise: Long
+        val baseAt: Long
+        when {
+            useAnchor -> { basePaise = anchor!!.amountPaise; baseAt = anchor.at }
+            reported != null -> { basePaise = reported.balancePaise!!; baseAt = reported.timestamp }
+            anchor != null -> return BalanceBuild(anchor.amountPaise, anchor.at, true, 0, 0)
+            else -> return null
+        }
+        val after = bankRows.filter { it.timestamp > baseAt && it.timestamp <= at }
+        return BalanceBuild(
+            basePaise, baseAt, useAnchor,
+            after.filter { it.direction == Direction.CREDIT }.sumOf { it.amountPaise },
+            after.filter { it.direction == Direction.DEBIT }.sumOf { it.amountPaise },
+        )
+    }
+
+    /**
+     * Balance across accounts at [at]. A total you entered wins and runs forward from there.
+     * Otherwise every account starts from its newest known figure and every movement since is applied,
+     * so the total keeps moving even when the bank stops quoting a balance in its alerts.
      */
     fun balanceAt(all: List<Transaction>, anchors: List<BalanceAnchor>, at: Long): Long? {
         anchors.firstOrNull { it.isTotal }?.let { return runningBalance(all, it, at) }
-        val perAccount = anchors.filter { !it.isTotal }
-        val reported = endBalance(all, at)
-        if (perAccount.isEmpty()) return reported
-        var total = 0L
-        val anchoredKeys = perAccount.map { it.key }.toSet()
-        for (a in perAccount) total += runningBalance(all.filter { it.bank == a.bank && it.accountTail == a.tail }, a, at)
-        // Add the last reported balance of accounts without an anchor.
-        val latest = HashMap<String, Transaction>()
-        for (t in all) {
-            if (t.balancePaise == null || t.accountTail == null || t.timestamp >= at) continue
-            val key = t.bank + "|" + t.accountTail
-            if (key in anchoredKeys) continue
-            val cur = latest[key]
-            if (cur == null || t.timestamp > cur.timestamp) latest[key] = t
+        val byKey = all.filter { it.accountTail != null }.groupBy { it.bank + "|" + it.accountTail }
+        val totals = HashMap<String, Long>()
+        for ((key, rows) in byKey) {
+            accountBalance(rows, anchors.firstOrNull { it.key == key }, at)?.let { totals[key] = it.paise }
         }
-        total += latest.values.sumOf { it.balancePaise!! }
-        return total
+        for (a in anchors) if (!a.isTotal && a.key !in totals && a.at <= at) totals[a.key] = a.amountPaise
+        if (totals.isEmpty()) return null
+        return totals.values.sum()
     }
 
     /** Sum of each account's last reported balance on or before [at]. Null when no account has reported one. */

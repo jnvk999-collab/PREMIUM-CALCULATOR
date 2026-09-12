@@ -138,13 +138,19 @@ fun MoneyScreen(state: HomeState, plan: PlanState, vm: MainViewModel, padding: P
                                 Column(Modifier.weight(1f)) {
                                     Text("${acc.bank} ··${acc.tail}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                                     Text(acc.source, style = MaterialTheme.typography.labelSmall, color = p.t2)
+                                    acc.build?.let { b ->
+                                        if (b.creditsPaise > 0 || b.debitsPaise > 0) Text(
+                                            "since then −${compactRupees(b.debitsPaise)} paid" + (if (b.creditsPaise > 0) ", +${compactRupees(b.creditsPaise)} received" else ""),
+                                            style = MaterialTheme.typography.labelSmall, color = p.t3
+                                        )
+                                    }
                                 }
                                 Text(acc.balancePaise?.let { formatRupees(it) } ?: "—", style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
                                 TextButton(onClick = { onSetBalance("${acc.bank}|${acc.tail}") }) { Text(if (acc.balancePaise == null) "Enter" else "Edit", color = p.gold) }
                             }
                         }
                         Spacer(Modifier.height(4.dp))
-                        Text("Balances come from bank alerts. Enter one yourself and the app keeps it running from every credit and debit.", style = MaterialTheme.typography.labelSmall, color = p.t3)
+                        Text("Each account starts from the newest figure you or the bank gave it, then every payment and credit since is applied. Tap Edit to correct one.", style = MaterialTheme.typography.labelSmall, color = p.t3)
                     }
                 }
                 "cards" -> cardsSection(plan, vm)

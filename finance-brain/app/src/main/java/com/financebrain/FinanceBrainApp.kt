@@ -71,6 +71,7 @@ class FinanceBrainApp : Application() {
             ignoredAccounts().forEach { k -> val b = k.substringBefore('|'); val t = k.substringAfter('|'); if (t.isNotBlank()) repository.purgeAccount(b, t) }
             if (!prefs.getBoolean("reparsed_tails_v2", false)) { repository.reparseAccountTails(); prefs.edit().putBoolean("reparsed_tails_v2", true).apply() }
             if (!prefs.getBoolean("anchors_day_v1", false)) { repository.moveAnchorsToDayStart(); prefs.edit().putBoolean("anchors_day_v1", true).apply() }
+            if (!prefs.getBoolean("retransfer_v2", false)) { repository.clearAutoTransfers(); prefs.edit().putBoolean("retransfer_v2", true).apply() }
             repository.syncCardsFromTransactions()
             repository.detectInternalTransfers()
         }

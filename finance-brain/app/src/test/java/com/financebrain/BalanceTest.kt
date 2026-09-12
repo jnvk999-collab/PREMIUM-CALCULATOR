@@ -1,0 +1,79 @@
+package com.financebrain
+
+import com.financebrain.data.BalanceAnchor
+import com.financebrain.data.Categories
+import com.financebrain.data.Direction
+import com.financebrain.data.Insights
+import com.financebrain.data.Source
+import com.financebrain.data.Transaction
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class BalanceTest {
+    private val day = 86_400_000L
+    private val now = 1_757_000_000_000L
+
+    private fun tx(
+        amount: Long, direction: Direction, at: Long, tail: String = "1730",
+        bank: String = "SBI", balance: Long? = null, kind: String = "BANK",
+    ) = Transaction(
+        amountPaise = amount, direction = direction, timestamp = at, bank = bank, accountTail = tail,
+        counterparty = "SHOP", category = Categories.OTHER, channel = "UPI", reference = null,
+        balancePaise = balance, source = Source.SMS, rawText = null, dedupKey = "$bank$tail$at$amount",
+        accountKind = kind,
+    )
+
+    @Test fun bankReportedBalanceKeepsMovingAfterTheAlert() {
+        // The bank quoted ₹20,000 two days ago and has quoted nothing since.
+        val rows = listOf(
+            tx(1_000_00, Direction.DEBIT, now - 2 * day, balance = 20_000_00),
+            tx(3_000_00, Direction.DEBIT, now - day),
+            tx(500_00, Direction.CREDIT, now - 3_600_000L),
+        )
+        assertEquals(17_500_00L, Insights.balanceAt(rows, emptyList(), now + 1))
+    }
+
+    @Test fun balanceYouEnterWinsOverAnOlderBankFigureAndRunsForward() {
+        val rows = listOf(
+            tx(1_000_00, Direction.DEBIT, now - 2 * day, balance = 20_000_00),
+            tx(3_000_00, Direction.DEBIT, now - 3_600_000L),
+        )
+        val anchor = BalanceAnchor("SBI|1730", 9_000_00, now - 2 * 3_600_000L)
+        assertEquals(6_000_00L, Insights.balanceAt(rows, listOf(anchor), now + 1))
+    }
+
+    @Test fun cardSpendsDoNotTouchTheBankBalance() {
+        val rows = listOf(
+            tx(10_000_00, Direction.DEBIT, now - 2 * day, balance = 20_000_00),
+            tx(2_000_00, Direction.DEBIT, now - day, tail = "46", bank = "HDFC", kind = "CARD"),
+        )
+        assertEquals(20_000_00L, Insights.balanceAt(rows, emptyList(), now + 1))
+    }
+
+    @Test fun accountsAddUp() {
+        val rows = listOf(
+            tx(100_00, Direction.DEBIT, now - day, balance = 5_000_00),
+            tx(100_00, Direction.DEBIT, now - day, tail = "8675", bank = "Federal Bank", balance = 7_000_00),
+            tx(1_000_00, Direction.DEBIT, now - 3_600_000L, tail = "8675", bank = "Federal Bank"),
+        )
+        assertEquals(11_000_00L, Insights.balanceAt(rows, emptyList(), now + 1))
+    }
+
+    @Test fun noFigureAnywhereMeansNoBalance() {
+        assertNull(Insights.balanceAt(listOf(tx(100_00, Direction.DEBIT, now - day)), emptyList(), now + 1))
+    }
+
+    @Test fun theWorkingIsAvailableForOneAccount() {
+        val rows = listOf(
+            tx(1_000_00, Direction.DEBIT, now - 2 * day, balance = 20_000_00),
+            tx(3_000_00, Direction.DEBIT, now - day),
+            tx(500_00, Direction.CREDIT, now - 3_600_000L),
+        )
+        val b = Insights.accountBalance(rows, null, now + 1)!!
+        assertEquals(20_000_00L, b.basePaise)
+        assertEquals(3_000_00L, b.debitsPaise)
+        assertEquals(500_00L, b.creditsPaise)
+        assertEquals(17_500_00L, b.paise)
+    }
+}

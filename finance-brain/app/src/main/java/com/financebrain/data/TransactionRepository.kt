@@ -201,19 +201,38 @@ class TransactionRepository(
      * on another, same amount, within a few days. Both legs are marked as transfers so they
      * never count as spending or income.
      */
+    private val selfWords = setOf("self", "transfer", "trf", "neft", "imps", "rtgs", "own", "sweep", "credit", "debit")
+
+    /**
+     * Two legs are the same money only when the names agree: identical, sharing a real word, one of
+     * them naming the other's bank, or one of them being a plain transfer word rather than a payee.
+     * Without this a restaurant bill pairs with an unrelated credit of the same amount.
+     */
+    private fun looksLikeSameMoney(d: Transaction, c: Transaction): Boolean {
+        fun words(t: Transaction) = t.counterparty.lowercase().split(Regex("""[^a-z0-9]+""")).filter { it.length >= 4 }
+        val dw = words(d)
+        val cw = words(c)
+        if (dw.isEmpty() || cw.isEmpty()) return true
+        if (Categorizer.merchantKey(d.counterparty) == Categorizer.merchantKey(c.counterparty)) return true
+        if (dw.all { it in selfWords } || cw.all { it in selfWords }) return true
+        if (dw.any { c.bank.lowercase().contains(it) } || cw.any { d.bank.lowercase().contains(it) }) return true
+        return dw.any { it in cw }
+    }
+
     suspend fun detectInternalTransfers(): Int {
         val all = db.transactions().allNow().filter { !it.userEdited && it.source != Source.MANUAL }
         val debits = all.filter { it.direction == Direction.DEBIT && !it.isTransfer }
         val credits = all.filter { it.direction == Direction.CREDIT && !it.isTransfer }.groupBy { it.amountPaise }
         val usedCredits = HashSet<Long>()
         val changed = ArrayList<Transaction>()
-        val window = 3 * 86_400_000L
+        val window = 26 * 3_600_000L
         for (d in debits) {
-            if (d.amountPaise < 50_000) continue // ignore tiny amounts; too many coincidences
+            if (d.amountPaise < 1_00_000) continue // below ₹1,000 the same amount twice is usually coincidence
             val c = credits[d.amountPaise]?.firstOrNull { c ->
                 c.id !in usedCredits &&
                     kotlin.math.abs(c.timestamp - d.timestamp) <= window &&
-                    (c.bank != d.bank || c.accountTail != d.accountTail)
+                    (c.bank != d.bank || c.accountTail != d.accountTail) &&
+                    looksLikeSameMoney(d, c)
             } ?: continue
             usedCredits += c.id
             changed += d.copy(isTransfer = true, category = Categories.TRANSFER)
@@ -221,6 +240,14 @@ class TransactionRepository(
         }
         if (changed.isNotEmpty()) db.transactions().updateAll(changed)
         return changed.size / 2
+    }
+
+    /** Undo transfer flags the old, looser rule set, so they can be judged again. */
+    suspend fun clearAutoTransfers(): Int {
+        val wrong = db.transactions().allNow().filter { it.isTransfer && !it.userEdited && it.source != Source.MANUAL }
+        if (wrong.isEmpty()) return 0
+        db.transactions().updateAll(wrong.map { it.copy(isTransfer = false, category = Categorizer.categorize(it.counterparty, it.channel, it.direction, it.rawText)) })
+        return wrong.size
     }
 
     /** Re-read stored alert text with the current parser and fix account tails and kinds. */

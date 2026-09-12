@@ -10,6 +10,7 @@ import com.financebrain.brain.BrainReport
 import com.financebrain.brain.BrainSettings
 import com.financebrain.data.Account
 import com.financebrain.data.Categories
+import com.financebrain.ui.formatDay
 import com.financebrain.ui.formatRupees
 import com.financebrain.data.Allocation
 import com.financebrain.data.CalendarEvent
@@ -53,7 +54,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** One row of the Home account strip: a bank account or a card with its best-known balance. */
-data class AccountView(val bank: String, val tail: String, val isCard: Boolean, val balancePaise: Long?, val source: String)
+data class AccountView(
+    val bank: String, val tail: String, val isCard: Boolean, val balancePaise: Long?, val source: String,
+    val build: Insights.BalanceBuild? = null,
+)
 
 data class PlanState(
     val cards: List<CardStatus> = emptyList(),
@@ -254,12 +258,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val bank = key.substringBefore('|'); val tail = key.substringAfter('|')
                     val isCard = ts.count { it.accountKind == "CARD" } * 2 > ts.size
                     val anchor = anchors.firstOrNull { it.key == key }
-                    val bal = when {
-                        isCard -> null
-                        anchor != null -> Insights.runningBalance(ts, anchor, now + 1)
-                        else -> ts.filter { it.balancePaise != null }.maxByOrNull { it.timestamp }?.balancePaise
+                    val build = if (isCard) null else Insights.accountBalance(ts, anchor, now + 1)
+                    val source = when {
+                        isCard -> "card"
+                        build == null -> "no balance yet"
+                        build.fromUser -> "you set ${formatRupees(build.basePaise)} on ${formatDay(build.baseAt)}"
+                        else -> "bank said ${formatRupees(build.basePaise)} on ${formatDay(build.baseAt)}"
                     }
-                    AccountView(bank, tail, isCard, bal, if (anchor != null) "set by you" else if (bal != null) "from alert" else "no balance yet")
+                    AccountView(bank, tail, isCard, build?.paise, source, build)
                 }.sortedWith(compareBy({ it.isCard }, { it.bank })),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState(_month.value))
