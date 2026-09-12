@@ -191,3 +191,32 @@ data class DisciplineEntry(
     val reason: String,
     val at: Long = System.currentTimeMillis(),
 )
+
+
+/** Something you own with a value: fund, stock, unlisted share, deposit, gold, property. */
+@Entity(tableName = "holdings")
+data class Holding(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val type: String,           // MUTUAL_FUND, STOCK, UNLISTED, DEPOSIT, GOLD, PROPERTY, OTHER
+    val account: String,        // e.g. "Groww (N)", "Groww (k)", "Bank FD"
+    val units: Double? = null,
+    val investedPaise: Long,
+    val currentPaise: Long,
+    val updatedAt: Long = System.currentTimeMillis(),
+    val notes: String? = null,
+)
+
+/** A formal loan with an interest rate; the app amortises it. */
+@Entity(tableName = "loans")
+data class Loan(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val lender: String,
+    val type: String,           // PERSONAL, HOME, CAR, EDUCATION, GOLD, OTHER
+    val outstandingPaise: Long, // principal outstanding as of asOf
+    val asOf: Long,
+    val annualRatePct: Double,
+    val emiPaise: Long,
+    val dueDay: Int = 5,
+    val notes: String? = null,
+)

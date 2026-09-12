@@ -57,6 +57,8 @@ fun BrainScreen(
     chat: List<MainViewModel.Exchange>,
     hasApiKey: Boolean,
     padding: PaddingValues,
+    wealthSections: List<com.financebrain.brain.BrainSection> = emptyList(),
+    wealthActions: List<String> = emptyList(),
     onAsk: (String) -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -76,7 +78,7 @@ fun BrainScreen(
             item {
                 SectionCard {
                     SectionTitle("What to do")
-                    report.actions.forEachIndexed { i, a ->
+                    (report.actions + wealthActions).forEachIndexed { i, a ->
                         Row(Modifier.padding(vertical = 6.dp)) {
                             Box(Modifier.size(26.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
                                 Text("${i + 1}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -87,7 +89,7 @@ fun BrainScreen(
                     }
                 }
             }
-            report.sections.forEach { s ->
+            (report.sections + wealthSections).forEach { s ->
                 item {
                     SectionCard {
                         Row(verticalAlignment = Alignment.CenterVertically) {

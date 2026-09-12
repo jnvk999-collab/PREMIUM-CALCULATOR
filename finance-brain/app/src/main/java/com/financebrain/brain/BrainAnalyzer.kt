@@ -214,5 +214,50 @@ object BrainAnalyzer {
         return BrainReport(score, label, headline, sections, actions.take(4))
     }
 
+    /** Balance-sheet view: assets, liabilities, loan cost against returns. */
+    fun wealth(nw: com.financebrain.data.NetWorth, loans: List<com.financebrain.data.LoanStatus>, holdings: List<com.financebrain.data.Holding>, monthlyIncome: Long): Pair<List<BrainSection>, List<String>> {
+        val sections = ArrayList<BrainSection>(); val actions = ArrayList<String>()
+        val lines = ArrayList<String>()
+        lines += "Assets ${compactRupees(nw.assets)} (bank ${compactRupees(nw.bankPaise)}, investments ${compactRupees(nw.holdingsPaise)}) − liabilities ${compactRupees(nw.liabilities)} = net worth ${formatRupees(nw.net)}."
+        if (monthlyIncome > 0) lines += "That is ${"%.1f".format(nw.net / monthlyIncome.toDouble())} months of income."
+        if (nw.liabilities > 0) lines += "Debt is ${(nw.liabilities * 100 / nw.assets.coerceAtLeast(1))}% of assets."
+        sections += BrainSection("Net worth", lines, if (nw.net > 0) Tone.GOOD else Tone.BAD)
+
+        if (loans.isNotEmpty()) {
+            val l = ArrayList<String>()
+            loans.forEach { st ->
+                l += "${st.loan.lender}: ${compactRupees(st.outstandingNowPaise)} left at ${"%.1f".format(st.loan.annualRatePct)}%, ${st.monthsLeft} months to go, ${compactRupees(st.totalInterestLeftPaise)} more interest."
+            }
+            val emi = loans.sumOf { it.loan.emiPaise }
+            if (monthlyIncome > 0) {
+                val share = (emi * 100 / monthlyIncome).toInt()
+                l += "EMIs are $share% of income." + if (share > 40) " Above 40% leaves little room for shocks." else ""
+            }
+            val gain = nw.holdingsPaise - nw.holdingsInvestedPaise
+            val retPct = if (nw.holdingsInvestedPaise > 0) gain * 100.0 / nw.holdingsInvestedPaise else 0.0
+            val hi = loans.maxBy { it.loan.annualRatePct }
+            if (holdings.isNotEmpty()) {
+                l += "Your investments show ${"%.1f".format(retPct)}% total gain so far, while the loan costs ${"%.1f".format(hi.loan.annualRatePct)}% a year, guaranteed."
+                if (hi.extra5kSavesPaise > 0) actions += "Prepaying ${hi.loan.lender} is a guaranteed ${"%.1f".format(hi.loan.annualRatePct)}% return. ₹5,000 extra a month saves ${compactRupees(hi.extra5kSavesPaise)} and ${hi.extra5kMonthsSaved} months. Consider directing part of any bonus or the deposits there."
+            }
+            sections += BrainSection("Loans", l, if (monthlyIncome > 0 && emi * 100 / monthlyIncome > 40) Tone.WARN else Tone.NEUTRAL)
+        }
+
+        if (holdings.isNotEmpty()) {
+            val byType = holdings.groupBy { it.type }.mapValues { it.value.sumOf { h -> h.currentPaise } }
+            val total = nw.holdingsPaise.coerceAtLeast(1)
+            val l = byType.entries.sortedByDescending { it.value }.map { (t, v) -> "${t.lowercase().replace('_', ' ').replaceFirstChar { it.uppercase() }}: ${compactRupees(v)} (${(v * 100 / total)}%)" }.toMutableList()
+            val eq = (byType["MUTUAL_FUND"] ?: 0L) + (byType["STOCK"] ?: 0L) + (byType["UNLISTED"] ?: 0L)
+            val safe = (byType["DEPOSIT"] ?: 0L) + (byType["GOLD"] ?: 0L)
+            if (eq > 0 || safe > 0) l += "Equity ${(eq * 100 / total)}% · deposits and gold ${(safe * 100 / total)}%."
+            val stale = holdings.filter { System.currentTimeMillis() - it.updatedAt > 45L * 86_400_000L }
+            if (stale.isNotEmpty()) actions += "${stale.size} holding${if (stale.size > 1) "s have" else " has"} not been updated in over 6 weeks. Refresh the values so net worth stays honest."
+            val unl = byType["UNLISTED"] ?: 0L
+            if (unl * 100 / total > 15) l += "Unlisted shares are ${(unl * 100 / total)}% of investments; they are hard to sell quickly, so keep an emergency buffer elsewhere."
+            sections += BrainSection("Investment mix", l, Tone.NEUTRAL)
+        }
+        return sections to actions
+    }
+
     private fun pct(delta: Long, base: Long): Int = if (base == 0L) 0 else (delta * 100.0 / base).roundToInt()
 }

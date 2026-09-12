@@ -9,6 +9,7 @@ import com.financebrain.brain.BrainAsk
 import com.financebrain.brain.BrainReport
 import com.financebrain.brain.BrainSettings
 import com.financebrain.data.Account
+import com.financebrain.ui.formatRupees
 import com.financebrain.data.Allocation
 import com.financebrain.data.CalendarEvent
 import com.financebrain.data.CardStatus
@@ -17,6 +18,10 @@ import com.financebrain.data.CreditCard
 import com.financebrain.data.DisciplineEntry
 import com.financebrain.data.DisciplineStatus
 import com.financebrain.data.Goal
+import com.financebrain.data.Holding
+import com.financebrain.data.Loan
+import com.financebrain.data.LoanStatus
+import com.financebrain.data.NetWorth
 import com.financebrain.data.InformalLoan
 import com.financebrain.data.Planning
 import com.financebrain.data.Receivable
@@ -57,6 +62,11 @@ data class PlanState(
     val controlled: List<ControlledCategory> = emptyList(),
     val zero: List<ZeroTolerance> = emptyList(),
     val entries: List<DisciplineEntry> = emptyList(),
+    val holdings: List<Holding> = emptyList(),
+    val loanStatuses: List<LoanStatus> = emptyList(),
+    val netWorth: NetWorth? = null,
+    val wealthSections: List<com.financebrain.brain.BrainSection> = emptyList(),
+    val wealthActions: List<String> = emptyList(),
     val salaryDay: Int = 1,
     val investPct: Int = 20,
     val budgetPaise: Long = 0,
@@ -112,7 +122,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val s = state.value
         _chat.value = _chat.value + Exchange(q, null)
         viewModelScope.launch {
-            val ctx = brainAsk.buildContext(s.allTransactions, s.months, s.accounts, s.recurring, s.report ?: BrainAnalyzer.analyze(s.allTransactions, s.months, s.month, s.recurring, System.currentTimeMillis()), s.month)
+            val p = plan.value
+            val ctx = brainAsk.buildContext(s.allTransactions, s.months, s.accounts, s.recurring, s.report ?: BrainAnalyzer.analyze(s.allTransactions, s.months, s.month, s.recurring, System.currentTimeMillis()), s.month) +
+                buildString {
+                    p.netWorth?.let { append("\nNet worth: assets ${formatRupees(it.assets)}, liabilities ${formatRupees(it.liabilities)}, net ${formatRupees(it.net)}\n") }
+                    if (p.holdings.isNotEmpty()) { append("Holdings (current / invested):\n"); p.holdings.forEach { append("- ${it.name} [${it.type}, ${it.account}]: ${formatRupees(it.currentPaise)} / ${formatRupees(it.investedPaise)}\n") } }
+                    if (p.loanStatuses.isNotEmpty()) { append("Loans:\n"); p.loanStatuses.forEach { append("- ${it.loan.lender}: outstanding ${formatRupees(it.outstandingNowPaise)} at ${it.loan.annualRatePct}%, EMI ${formatRupees(it.loan.emiPaise)}, ${it.monthsLeft} months left, interest left ${formatRupees(it.totalInterestLeftPaise)}\n") } }
+                    p.allocation?.let { append("Cycle plan: free to spend ${formatRupees(it.freeToSpendPaise)}, spent ${formatRupees(it.spentSoFarPaise)}, ${it.daysLeft} days left\n") }
+                    p.wealthSections.forEach { sec -> append("## ${sec.title}\n"); sec.lines.forEach { append("- $it\n") } }
+                }
             val a = brainAsk.ask(q, ctx)
             _chat.value = _chat.value.map { if (it.question == q && it.answer == null) it.copy(answer = a) else it }
         }
@@ -239,16 +257,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val plan: StateFlow<PlanState> = combine(
         combine(state, repo.cards, repo.goals, repo.receivables, repo.informalLoans) { s, cards, goals, recv, loans -> arrayOf(s, cards, goals, recv, loans) },
         combine(repo.controlled, repo.zeroTolerance, repo.disciplineEntries, _settingsTick) { c, z, e, _ -> Triple(c, z, e) },
-    ) { a, d ->
+        combine(repo.holdings, repo.loans) { h, l -> h to l },
+    ) { a, d, hl ->
         @Suppress("UNCHECKED_CAST")
         val s = a[0] as HomeState; val cards = a[1] as List<CreditCard>; val goals = a[2] as List<Goal>
         val recv = a[3] as List<Receivable>; val loans = a[4] as List<InformalLoan>
         val now = System.currentTimeMillis()
         val statuses = cards.map { Planning.cardStatus(it, s.allTransactions, now) }
         val debits = s.recurring.filter { it.direction == Direction.DEBIT }
+        val loanStatuses = hl.second.map { Planning.loanStatus(it, now) }
+        // Formal loans replace the detected EMI lines with the same amount.
+        val detectedLoans = s.loans.filter { d -> hl.second.none { kotlin.math.abs(it.emiPaise - d.emiPaise) < 2_000_00 } }
+        val nw = Planning.netWorth(s.monthBalance.nowPaise, hl.first, recv, loanStatuses, statuses, loans)
+        val wealth = BrainAnalyzer.wealth(nw, loanStatuses, hl.first, s.salary?.amountPaise ?: s.incomePaise)
         PlanState(
+            holdings = hl.first, loanStatuses = loanStatuses, netWorth = nw, wealthSections = wealth.first, wealthActions = wealth.second,
             cards = statuses,
-            allocation = Planning.allocation(s.allTransactions, s.month, now, s.salary, s.loans, statuses, debits, appRef.investTargetPct),
+            allocation = Planning.allocation(s.allTransactions, s.month, now, s.salary,
+                detectedLoans + hl.second.map { com.financebrain.data.LoanInfo(it.lender, it.emiPaise, Planning.dayToTs(now, it.dueDay), 0, 0, it.type) },
+                statuses, debits, appRef.investTargetPct),
             calendar = Planning.calendar(s.month, appRef.salaryDay, s.salary, s.loans, statuses, s.recurring),
             goals = goals, receivables = recv, informalLoans = loans,
             discipline = Planning.discipline(s.allTransactions, s.month, d.first, d.second, d.third, now),
@@ -263,6 +290,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setDaughterName(n: String) { appRef.daughterName = n; _settingsTick.value++ }
     fun setDailyAlert(enabled: Boolean, hour: Int) { appRef.dailyAlertEnabled = enabled; appRef.dailyAlertHour = hour; com.financebrain.alerts.DailyAlertWorker.schedule(getApplication()); _settingsTick.value++ }
 
+    fun saveHolding(h: Holding) = viewModelScope.launch { repo.saveHolding(h) }
+    fun deleteHolding(id: Long) = viewModelScope.launch { repo.deleteHolding(id) }
+    fun saveLoan(l: Loan) = viewModelScope.launch { repo.saveLoan(l) }
+    fun deleteLoan(id: Long) = viewModelScope.launch { repo.deleteLoan(id) }
     fun saveCard(c: CreditCard) = viewModelScope.launch { repo.saveCard(c) }
     fun deleteCard(key: String) = viewModelScope.launch { repo.deleteCard(key) }
     fun saveGoal(g: Goal) = viewModelScope.launch { repo.saveGoal(g) }

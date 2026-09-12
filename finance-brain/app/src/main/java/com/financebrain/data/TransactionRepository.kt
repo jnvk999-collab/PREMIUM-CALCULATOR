@@ -40,6 +40,29 @@ class TransactionRepository(
     val zeroTolerance: Flow<List<ZeroTolerance>> = db.discipline().zero()
     val disciplineEntries: Flow<List<DisciplineEntry>> = db.discipline().entries()
 
+    val holdings: Flow<List<Holding>> = db.holdings().all()
+    val loans: Flow<List<Loan>> = db.loans().all()
+    suspend fun saveHolding(h: Holding) = db.holdings().upsert(h)
+    suspend fun deleteHolding(id: Long) = db.holdings().delete(id)
+    suspend fun saveLoan(l: Loan) = db.loans().upsert(l)
+    suspend fun deleteLoan(id: Long) = db.loans().delete(id)
+
+    /** One-time seed of the owner's known holdings and loan, entered from their broker screens. */
+    suspend fun seedOwnerPortfolio() {
+        if (db.holdings().count() > 0 || db.loans().count() > 0) return
+        val at = System.currentTimeMillis()
+        listOf(
+            Holding(name = "Invesco India Mid Cap Fund Direct Growth", type = "MUTUAL_FUND", account = "Groww (N)", investedPaise = 63_316_00, currentPaise = 68_835_00, updatedAt = at),
+            Holding(name = "Groww mutual funds · 10 holdings (Bandhan Small Cap, Nippon Growth Mid Cap, Parag Parikh Flexi Cap …)", type = "MUTUAL_FUND", account = "Groww (k)", investedPaise = 38_98_180_00, currentPaise = 41_58_990_00, updatedAt = at, notes = "Split into individual funds any time"),
+            Holding(name = "Hy-Tech Engineers", type = "STOCK", account = "Groww (k)", units = 927.0, investedPaise = 67_272_00, currentPaise = 79_351_00, updatedAt = at),
+            Holding(name = "Chembond Material Technologies", type = "STOCK", account = "Groww (k)", units = 246.0, investedPaise = 53_348_00, currentPaise = 53_412_00, updatedAt = at),
+            Holding(name = "ASK Automotive", type = "STOCK", account = "Groww (k)", units = 70.0, investedPaise = 43_219_00, currentPaise = 43_719_00, updatedAt = at),
+            Holding(name = "Tempsens Instruments", type = "STOCK", account = "Groww (k)", units = 21.0, investedPaise = 11_918_00, currentPaise = 12_281_00, updatedAt = at),
+            Holding(name = "NSE (unlisted) · 200 shares @ ₹1,970", type = "UNLISTED", account = "Unlisted", units = 200.0, investedPaise = 3_94_000_00, currentPaise = 3_94_000_00, updatedAt = at, notes = "Update the current price when you have a quote"),
+            Holding(name = "Bank deposits", type = "DEPOSIT", account = "Bank FD", investedPaise = 8_00_000_00, currentPaise = 8_00_000_00, updatedAt = at),
+        ).forEach { db.holdings().upsert(it) }
+        db.loans().upsert(Loan(lender = "Personal loan", type = "PERSONAL", outstandingPaise = 33_50_000_00, asOf = at, annualRatePct = 8.5, emiPaise = 60_000_00))
+    }
     suspend fun saveCard(c: CreditCard) = db.cards().upsert(c)
     suspend fun deleteCard(key: String) = db.cards().delete(key)
     suspend fun saveGoal(g: Goal) = db.goals().upsert(g)

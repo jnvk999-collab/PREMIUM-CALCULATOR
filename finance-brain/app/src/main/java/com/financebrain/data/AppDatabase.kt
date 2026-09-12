@@ -34,6 +34,13 @@ val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
     }
 }
 
+val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `holdings` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `type` TEXT NOT NULL, `account` TEXT NOT NULL, `units` REAL, `investedPaise` INTEGER NOT NULL, `currentPaise` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `notes` TEXT)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS `loans` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `lender` TEXT NOT NULL, `type` TEXT NOT NULL, `outstandingPaise` INTEGER NOT NULL, `asOf` INTEGER NOT NULL, `annualRatePct` REAL NOT NULL, `emiPaise` INTEGER NOT NULL, `dueDay` INTEGER NOT NULL, `notes` TEXT)")
+    }
+}
+
 class Converters {
     @TypeConverter fun dirToString(d: Direction) = d.name
     @TypeConverter fun stringToDir(s: String) = Direction.valueOf(s)
@@ -159,6 +166,24 @@ interface DisciplineDao {
 }
 
 @Dao
+interface HoldingDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(h: Holding): Long
+    @Query("DELETE FROM holdings WHERE id = :id") suspend fun delete(id: Long)
+    @Query("SELECT * FROM holdings ORDER BY currentPaise DESC") fun all(): Flow<List<Holding>>
+    @Query("SELECT * FROM holdings") suspend fun list(): List<Holding>
+    @Query("SELECT COUNT(*) FROM holdings") suspend fun count(): Int
+}
+
+@Dao
+interface LoanDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(l: Loan): Long
+    @Query("DELETE FROM loans WHERE id = :id") suspend fun delete(id: Long)
+    @Query("SELECT * FROM loans ORDER BY outstandingPaise DESC") fun all(): Flow<List<Loan>>
+    @Query("SELECT * FROM loans") suspend fun list(): List<Loan>
+    @Query("SELECT COUNT(*) FROM loans") suspend fun count(): Int
+}
+
+@Dao
 interface ProcessedEmailDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(row: ProcessedEmail)
@@ -217,8 +242,9 @@ interface ProcessedSmsDao {
 
 @Database(
     entities = [Transaction::class, Account::class, MerchantRule::class, ProcessedSms::class, ProcessedEmail::class, BalanceAnchor::class,
-        CreditCard::class, Goal::class, Receivable::class, InformalLoan::class, ControlledCategory::class, ZeroTolerance::class, DisciplineEntry::class],
-    version = 4,
+        CreditCard::class, Goal::class, Receivable::class, InformalLoan::class, ControlledCategory::class, ZeroTolerance::class, DisciplineEntry::class,
+        Holding::class, Loan::class],
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -234,12 +260,14 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun receivables(): ReceivableDao
     abstract fun informalLoans(): InformalLoanDao
     abstract fun discipline(): DisciplineDao
+    abstract fun holdings(): HoldingDao
+    abstract fun loans(): LoanDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "finance_brain.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigrationFrom(1)
                 .build().also { instance = it }
         }

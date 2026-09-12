@@ -39,7 +39,63 @@ data class DisciplineStatus(
     val fineJarPaise: Long, val regretPaise: Long,
 )
 
+data class LoanStatus(
+    val loan: Loan,
+    val outstandingNowPaise: Long,      // rolled forward from asOf by EMIs paid since
+    val monthsLeft: Int, val payoffAt: Long,
+    val interestThisMonthPaise: Long, val principalThisMonthPaise: Long,
+    val totalInterestLeftPaise: Long,
+    val extra5kSavesPaise: Long, val extra5kMonthsSaved: Int,
+)
+
+data class NetWorth(
+    val bankPaise: Long, val holdingsPaise: Long, val holdingsInvestedPaise: Long, val receivablesPaise: Long,
+    val loansPaise: Long, val cardsPaise: Long, val informalPaise: Long,
+) {
+    val assets get() = bankPaise + holdingsPaise + receivablesPaise
+    val liabilities get() = loansPaise + cardsPaise + informalPaise
+    val net get() = assets - liabilities
+}
+
 object Planning {
+
+    /** Standard reducing-balance amortisation. Returns (months to clear, total interest) or null if the EMI cannot cover interest. */
+    fun amortise(principalPaise: Long, annualRatePct: Double, emiPaise: Long): Pair<Int, Long>? {
+        val r = annualRatePct / 100.0 / 12.0
+        var bal = principalPaise.toDouble(); var months = 0; var interest = 0.0
+        if (r <= 0) { val m = kotlin.math.ceil(principalPaise.toDouble() / emiPaise).toInt(); return m to 0L }
+        if (emiPaise <= bal * r) return null
+        while (bal > 1 && months < 600) {
+            val i = bal * r; interest += i; bal = bal + i - emiPaise; months++
+        }
+        return months to interest.toLong()
+    }
+
+    fun loanStatus(loan: Loan, now: Long): LoanStatus {
+        val r = loan.annualRatePct / 100.0 / 12.0
+        // Roll the balance forward one EMI per month elapsed since asOf.
+        val monthsElapsed = Calendar.getInstance().let { c ->
+            val a = Calendar.getInstance().apply { timeInMillis = loan.asOf }; c.timeInMillis = now
+            ((c.get(Calendar.YEAR) - a.get(Calendar.YEAR)) * 12 + c.get(Calendar.MONTH) - a.get(Calendar.MONTH)).coerceAtLeast(0)
+        }
+        var bal = loan.outstandingPaise.toDouble()
+        repeat(monthsElapsed) { if (bal > 0) bal = bal + bal * r - loan.emiPaise }
+        val outstanding = bal.coerceAtLeast(0.0).toLong()
+        val (months, interestLeft) = amortise(outstanding, loan.annualRatePct, loan.emiPaise) ?: (0 to 0L)
+        val interestThis = (outstanding * r).toLong()
+        val payoff = Calendar.getInstance().apply { timeInMillis = now; add(Calendar.MONTH, months) }.timeInMillis
+        val withExtra = amortise(outstanding, loan.annualRatePct, loan.emiPaise + 5_000_00)
+        val saves = if (withExtra != null) interestLeft - withExtra.second else 0L
+        val monthsSaved = if (withExtra != null) months - withExtra.first else 0
+        return LoanStatus(loan, outstanding, months, payoff, interestThis, (loan.emiPaise - interestThis).coerceAtLeast(0), interestLeft, saves, monthsSaved)
+    }
+
+    fun netWorth(bank: Long?, holdings: List<Holding>, receivables: List<Receivable>, loans: List<LoanStatus>, cards: List<CardStatus>, informal: List<InformalLoan>) = NetWorth(
+        bank ?: 0L, holdings.sumOf { it.currentPaise }, holdings.sumOf { it.investedPaise },
+        receivables.filter { !it.received }.sumOf { it.amountPaise },
+        loans.sumOf { it.outstandingNowPaise }, cards.sumOf { it.outstandingPaise + it.currentSpendPaise },
+        informal.filter { !it.repaid }.sumOf { it.amountPaise },
+    )
 
     fun dayToTs(base: Long, day: Int): Long = Calendar.getInstance().apply {
         timeInMillis = base; set(Calendar.DAY_OF_MONTH, minOf(day, getActualMaximum(Calendar.DAY_OF_MONTH)))

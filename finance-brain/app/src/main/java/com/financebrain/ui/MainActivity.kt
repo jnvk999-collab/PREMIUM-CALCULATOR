@@ -182,8 +182,8 @@ private fun App(vm: MainViewModel) {
         }
     ) { padding ->
         when (tab) {
-            Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions }, { tab = Tab.Brain }, { settingBalance = true }, plan.allocation, { moneySection = 2; tab = Tab.Insights })
-            Tab.Brain -> BrainScreen(state.report, state.month, chat, hasApiKey, padding, vm::ask) { tab = Tab.Settings }
+            Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions }, { tab = Tab.Brain }, { settingBalance = true }, plan.allocation, { moneySection = 2; tab = Tab.Insights }, plan.netWorth, { moneySection = 4; tab = Tab.Insights })
+            Tab.Brain -> BrainScreen(state.report, state.month, chat, hasApiKey, padding, plan.wealthSections, plan.wealthActions, vm::ask) { tab = Tab.Settings }
             Tab.Transactions -> TransactionsScreen(state.allTransactions, padding) { selected = it }
             Tab.Insights -> InsightsScreen(state, plan, vm, padding, moneySection) { tab = Tab.Settings }
             Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { requestSms() }, { openAppSettings() }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate,

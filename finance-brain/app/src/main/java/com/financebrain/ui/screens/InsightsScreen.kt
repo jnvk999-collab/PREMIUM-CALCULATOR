@@ -74,8 +74,8 @@ fun InsightsScreen(state: HomeState, plan: com.financebrain.ui.PlanState, vm: co
             1 -> recurring(state)
             2 -> cardsSection(plan, vm)
             3 -> calendarSection(state, plan)
-            4 -> investments(state)
-            5 -> loansAndSalary(state)
+            4 -> { holdingsSection(plan, vm); investments(state) }
+            5 -> { formalLoansSection(plan, vm); loansAndSalary(state) }
             6 -> goalsSection(plan, vm)
             else -> disciplineSection(plan, vm, onOpenSettings)
         }
@@ -268,7 +268,7 @@ private fun LazyListScope.investments(state: HomeState) {
     }
     item {
         SectionCard {
-            SectionTitle("By fund or instrument", "cost, not market value")
+            SectionTitle("Money sent to investments", "from bank alerts, cost basis")
             lines.forEach { l ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {

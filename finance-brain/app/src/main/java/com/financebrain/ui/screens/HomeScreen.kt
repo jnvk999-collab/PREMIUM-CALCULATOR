@@ -79,6 +79,8 @@ fun HomeScreen(
     onSetBalance: () -> Unit = {},
     allocation: com.financebrain.data.Allocation? = null,
     onOpenPlanner: () -> Unit = {},
+    netWorth: com.financebrain.data.NetWorth? = null,
+    onOpenHoldings: () -> Unit = {},
 ) {
     val now = System.currentTimeMillis()
     val isCurrentMonth = state.month == monthStart(now)
@@ -105,6 +107,29 @@ fun HomeScreen(
         if (scan != null && !scan.done) item { ScanBanner(scan) }
 
         item { HeroCard(state, onSetBalance) }
+
+        netWorth?.let { nw ->
+            item {
+                SectionCard {
+                    SectionTitle("Net worth", "Holdings", onOpenHoldings)
+                    Text(formatRupees(nw.net), style = MaterialTheme.typography.headlineMedium, color = if (nw.net >= 0) MaterialTheme.colorScheme.onSurface else Coral)
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatPill("Bank", compactRupees(nw.bankPaise), Teal, Modifier.weight(1f))
+                        StatPill("Investments", compactRupees(nw.holdingsPaise), Leaf, Modifier.weight(1f))
+                        StatPill("Owed to you", compactRupees(nw.receivablesPaise), Leaf, Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatPill("Loans", compactRupees(nw.loansPaise), Coral, Modifier.weight(1f))
+                        StatPill("Card dues", compactRupees(nw.cardsPaise), Coral, Modifier.weight(1f))
+                        StatPill("Borrowed", compactRupees(nw.informalPaise), Coral, Modifier.weight(1f))
+                    }
+                    val g = nw.holdingsPaise - nw.holdingsInvestedPaise
+                    if (nw.holdingsInvestedPaise > 0) { Spacer(Modifier.height(6.dp)); Text("Investments are ${if (g >= 0) "up" else "down"} ${compactRupees(kotlin.math.abs(g))} on ${compactRupees(nw.holdingsInvestedPaise)} invested.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+            }
+        }
 
         allocation?.let { a ->
             item {

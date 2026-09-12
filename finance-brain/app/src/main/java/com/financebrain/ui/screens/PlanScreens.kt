@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -482,4 +484,129 @@ private fun CategoryPicker(options: List<String>, onDismiss: () -> Unit, onPick:
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Choose a category") },
         text = { FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { options.forEach { c -> FilterChip(selected = false, onClick = { onPick(c) }, label = { Text(c) }) } } },
         confirmButton = {}, dismissButton = { TextButton(onDismiss) { Text("Cancel") } })
+}
+
+// ======================================================================= Holdings (market value)
+private val holdingTypes = listOf("MUTUAL_FUND" to "Mutual fund", "STOCK" to "Stock", "UNLISTED" to "Unlisted", "DEPOSIT" to "Deposit", "GOLD" to "Gold", "PROPERTY" to "Property", "OTHER" to "Other")
+
+fun LazyListScope.holdingsSection(plan: PlanState, vm: MainViewModel) {
+    item {
+        var editing by remember { mutableStateOf<com.financebrain.data.Holding?>(null) }
+        var adding by remember { mutableStateOf(false) }
+        val cur = plan.holdings.sumOf { it.currentPaise }; val inv = plan.holdings.sumOf { it.investedPaise }
+        val gain = cur - inv
+        Column {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatPill("Current value", compactRupees(cur), Teal, Modifier.weight(1f))
+                StatPill("Invested", compactRupees(inv), Teal, Modifier.weight(1f))
+                StatPill("Gain", (if (gain >= 0) "+" else "") + compactRupees(gain) + if (inv > 0) " (${"%.1f".format(gain * 100.0 / inv)}%)" else "", if (gain >= 0) Leaf else Coral, Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(12.dp))
+            SectionCard {
+                SectionTitle("Holdings", "Add") { adding = true }
+                if (plan.holdings.isEmpty()) EmptyHint("Add funds, stocks, deposits and anything else you own. Tap a line to update its value.")
+                plan.holdings.groupBy { it.account }.forEach { (acct, hs) ->
+                    Text(acct, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                    hs.forEach { h ->
+                        val g = h.currentPaise - h.investedPaise
+                        Row(Modifier.fillMaxWidth().clickable { editing = h }.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(h.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(holdingTypes.firstOrNull { it.first == h.type }?.second.orEmpty() + (h.units?.let { " · ${if (it == it.toLong().toDouble()) it.toLong().toString() else "%.2f".format(it)} units" } ?: "") + " · updated ${formatDay(h.updatedAt)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(formatRupees(h.currentPaise), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                Text((if (g >= 0) "+" else "") + compactRupees(g), style = MaterialTheme.typography.bodySmall, color = if (g >= 0) Leaf else Coral)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (adding || editing != null) HoldingDialog(editing, { adding = false; editing = null }, { vm.saveHolding(it); adding = false; editing = null }, { vm.deleteHolding(it); editing = null })
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HoldingDialog(h: com.financebrain.data.Holding?, onDismiss: () -> Unit, onSave: (com.financebrain.data.Holding) -> Unit, onDelete: (Long) -> Unit) {
+    var name by remember { mutableStateOf(h?.name ?: "") }
+    var type by remember { mutableStateOf(h?.type ?: "MUTUAL_FUND") }
+    var account by remember { mutableStateOf(h?.account ?: "") }
+    var units by remember { mutableStateOf(h?.units?.toString() ?: "") }
+    var invested by remember { mutableStateOf(h?.investedPaise?.let { (it / 100).toString() } ?: "") }
+    var current by remember { mutableStateOf(h?.currentPaise?.let { (it / 100).toString() } ?: "") }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (h == null) "Add holding" else "Update holding") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+            OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { holdingTypes.forEach { (k, l) -> FilterChip(selected = type == k, onClick = { type = k }, label = { Text(l) }) } }
+            OutlinedTextField(account, { account = it }, label = { Text("Account / platform (e.g. Groww (k))") }, singleLine = true)
+            OutlinedTextField(units, { v -> if (v.matches(Regex("""\d{0,9}(\.\d{0,4})?"""))) units = v }, label = { Text("Units / shares, optional") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            AmountField(invested, { invested = it }, "Invested (₹)")
+            AmountField(current, { current = it }, "Current value (₹)")
+        } },
+        confirmButton = { Button(enabled = name.isNotBlank() && (BankSmsParser.toPaise(current) ?: -1) >= 0, onClick = {
+            onSave(com.financebrain.data.Holding(h?.id ?: 0, name.trim(), type, account.trim().ifBlank { "Other" }, units.toDoubleOrNull(), BankSmsParser.toPaise(invested) ?: 0L, BankSmsParser.toPaise(current)!!, System.currentTimeMillis(), h?.notes))
+        }) { Text("Save") } },
+        dismissButton = { Row { if (h != null) TextButton({ onDelete(h.id) }) { Text("Delete") }; TextButton(onDismiss) { Text("Cancel") } } })
+}
+
+// ======================================================================= Formal loans (amortised)
+private val loanTypes = listOf("PERSONAL" to "Personal", "HOME" to "Home", "CAR" to "Car", "EDUCATION" to "Education", "GOLD" to "Gold", "OTHER" to "Other")
+
+fun LazyListScope.formalLoansSection(plan: PlanState, vm: MainViewModel) {
+    item {
+        var editing by remember { mutableStateOf<com.financebrain.data.Loan?>(null) }
+        var adding by remember { mutableStateOf(false) }
+        SectionCard {
+            SectionTitle("Loans", "Add") { adding = true }
+            if (plan.loanStatuses.isEmpty()) EmptyHint("Add a loan with its rate and EMI to see the payoff date, interest left and what prepaying would save.")
+            plan.loanStatuses.forEach { st ->
+                Column(Modifier.fillMaxWidth().clickable { editing = st.loan }.padding(vertical = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CategoryDot(Categories.EMI, 36); Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(st.loan.lender, style = MaterialTheme.typography.titleMedium)
+                            Text("${loanTypes.firstOrNull { it.first == st.loan.type }?.second ?: st.loan.type} · ${"%.2f".format(st.loan.annualRatePct)}% · EMI ${formatRupees(st.loan.emiPaise)} on day ${st.loan.dueDay}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Text(compactRupees(st.outstandingNowPaise), style = MaterialTheme.typography.titleMedium, color = Coral)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StatPill("Months left", "${st.monthsLeft}", Teal, Modifier.weight(1f))
+                        StatPill("Paid off", formatDay(st.payoffAt).substringAfter(" "), Teal, Modifier.weight(1f))
+                        StatPill("Interest left", compactRupees(st.totalInterestLeftPaise), Coral, Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text("This month's EMI: ${formatRupees(st.interestThisMonthPaise)} interest, ${formatRupees(st.principalThisMonthPaise)} principal.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (st.extra5kSavesPaise > 0) Text("Paying ₹5,000 extra a month would save ${formatRupees(st.extra5kSavesPaise)} in interest and finish ${st.extra5kMonthsSaved} months earlier.", style = MaterialTheme.typography.bodySmall, color = Leaf)
+                }
+            }
+        }
+        if (adding || editing != null) LoanDialog(editing, { adding = false; editing = null }, { vm.saveLoan(it); adding = false; editing = null }, { vm.deleteLoan(it); editing = null })
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LoanDialog(l: com.financebrain.data.Loan?, onDismiss: () -> Unit, onSave: (com.financebrain.data.Loan) -> Unit, onDelete: (Long) -> Unit) {
+    var lender by remember { mutableStateOf(l?.lender ?: "") }
+    var type by remember { mutableStateOf(l?.type ?: "PERSONAL") }
+    var outstanding by remember { mutableStateOf(l?.outstandingPaise?.let { (it / 100).toString() } ?: "") }
+    var rate by remember { mutableStateOf(l?.annualRatePct?.toString() ?: "") }
+    var emi by remember { mutableStateOf(l?.emiPaise?.let { (it / 100).toString() } ?: "") }
+    var due by remember { mutableStateOf(l?.dueDay?.toString() ?: "5") }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (l == null) "Add loan" else "Loan") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(lender, { lender = it }, label = { Text("Lender / name") }, singleLine = true)
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { loanTypes.forEach { (k, v) -> FilterChip(selected = type == k, onClick = { type = k }, label = { Text(v) }) } }
+            AmountField(outstanding, { outstanding = it }, "Outstanding today (₹)")
+            OutlinedTextField(rate, { v -> if (v.matches(Regex("""\d{0,2}(\.\d{0,2})?"""))) rate = v }, label = { Text("Interest rate % per year") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+            AmountField(emi, { emi = it }, "EMI (₹)")
+            OutlinedTextField(due, { due = it.filter(Char::isDigit).take(2) }, label = { Text("EMI day (1-28)") }, singleLine = true)
+        } },
+        confirmButton = { Button(enabled = lender.isNotBlank() && (BankSmsParser.toPaise(outstanding) ?: 0) > 0 && (BankSmsParser.toPaise(emi) ?: 0) > 0 && rate.toDoubleOrNull() != null, onClick = {
+            onSave(com.financebrain.data.Loan(l?.id ?: 0, lender.trim(), type, BankSmsParser.toPaise(outstanding)!!, System.currentTimeMillis(), rate.toDouble(), BankSmsParser.toPaise(emi)!!, due.toIntOrNull()?.coerceIn(1, 28) ?: 5, l?.notes))
+        }) { Text("Save") } },
+        dismissButton = { Row { if (l != null) TextButton({ onDelete(l.id) }) { Text("Delete") }; TextButton(onDismiss) { Text("Cancel") } } })
 }
