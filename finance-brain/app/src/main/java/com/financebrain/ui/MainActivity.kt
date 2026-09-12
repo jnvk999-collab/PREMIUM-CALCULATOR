@@ -53,6 +53,7 @@ import com.financebrain.ui.screens.BrainScreen
 import com.financebrain.ui.screens.HomeScreen
 import com.financebrain.ui.screens.InsightsScreen
 import com.financebrain.ui.screens.SettingsScreen
+import com.financebrain.ui.screens.SetBalanceSheet
 import com.financebrain.ui.screens.TransactionDetailSheet
 import com.financebrain.ui.screens.TransactionsScreen
 import com.financebrain.ui.theme.FinanceBrainTheme
@@ -142,6 +143,7 @@ private fun App(vm: MainViewModel) {
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var selected by remember { mutableStateOf<Transaction?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var settingBalance by remember { mutableStateOf(false) }
 
     // Keep the open sheet in sync with edits.
     val live = selected?.let { s -> state.allTransactions.firstOrNull { it.id == s.id } }
@@ -162,7 +164,7 @@ private fun App(vm: MainViewModel) {
         }
     ) { padding ->
         when (tab) {
-            Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions }, { tab = Tab.Brain })
+            Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions }, { tab = Tab.Brain }, { settingBalance = true })
             Tab.Brain -> BrainScreen(state.report, state.month, chat, hasApiKey, padding, vm::ask) { tab = Tab.Settings }
             Tab.Transactions -> TransactionsScreen(state.allTransactions, padding) { selected = it }
             Tab.Insights -> InsightsScreen(state, padding)
@@ -180,6 +182,13 @@ private fun App(vm: MainViewModel) {
         onNote = { vm.setNote(live, it) },
         onDelete = { vm.delete(live); selected = null },
         onSpam = { vm.markSpam(live); selected = null },
+    )
+
+    if (settingBalance) SetBalanceSheet(
+        accounts = state.accounts, anchors = state.anchors,
+        onDismiss = { settingBalance = false },
+        onSave = { key, paise -> vm.setBalance(key, paise, System.currentTimeMillis()); settingBalance = false },
+        onClear = { key -> vm.clearBalance(key); settingBalance = false },
     )
 
     if (adding) AddTransactionSheet(

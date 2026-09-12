@@ -75,6 +75,7 @@ fun HomeScreen(
     onOpenTransaction: (Transaction) -> Unit,
     onSeeAll: () -> Unit,
     onOpenBrain: () -> Unit = {},
+    onSetBalance: () -> Unit = {},
 ) {
     val now = System.currentTimeMillis()
     val isCurrentMonth = state.month == monthStart(now)
@@ -100,7 +101,7 @@ fun HomeScreen(
 
         if (scan != null && !scan.done) item { ScanBanner(scan) }
 
-        item { HeroCard(state) }
+        item { HeroCard(state, onSetBalance) }
 
         state.report?.let { r ->
             item {
@@ -212,22 +213,31 @@ private fun ScanBanner(scan: ScanProgress) {
 }
 
 @Composable
-private fun HeroCard(state: HomeState) {
+private fun HeroCard(state: HomeState, onSetBalance: () -> Unit) {
     Card(
         shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.cardColors(containerColor = Teal),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        modifier = Modifier.clickable(onClick = onSetBalance),
     ) {
         Box(Modifier.background(Brush.linearGradient(listOf(Teal, TealDark)))) {
             Column(Modifier.padding(20.dp)) {
-                Text("Total balance", style = MaterialTheme.typography.labelLarge, color = Mint)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Total balance", style = MaterialTheme.typography.labelLarge, color = Mint, modifier = Modifier.weight(1f))
+                    Text(if (state.anchors.isEmpty()) "Set balance" else "Adjust", style = MaterialTheme.typography.labelMedium, color = Mint)
+                }
                 Text(
                     formatRupees(state.totalBalancePaise),
                     style = MaterialTheme.typography.displaySmall,
                     color = androidx.compose.ui.graphics.Color.White,
                 )
                 Text(
-                    if (state.accounts.isEmpty()) "Balances appear once a bank alert reports one" else "across ${state.accounts.size} account${if (state.accounts.size > 1) "s" else ""}",
+                    when {
+                        state.hasTotalAnchor -> "running from the balance you set on ${formatDay(state.anchors.first { it.isTotal }.at)}"
+                        state.anchors.isNotEmpty() -> "${state.anchors.size} account${if (state.anchors.size > 1) "s" else ""} set by you, rest from bank alerts"
+                        state.accounts.isEmpty() -> "Tap to enter today's balance and start tracking from here"
+                        else -> "from bank alerts across ${state.accounts.size} account${if (state.accounts.size > 1) "s" else ""} · tap to set exact"
+                    },
                     style = MaterialTheme.typography.bodySmall, color = Mint.copy(alpha = 0.85f)
                 )
                 val mb = state.monthBalance

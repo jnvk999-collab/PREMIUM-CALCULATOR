@@ -13,6 +13,12 @@ import androidx.room.TypeConverters
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
+val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS `balance_anchors` (`key` TEXT NOT NULL, `amountPaise` INTEGER NOT NULL, `at` INTEGER NOT NULL, PRIMARY KEY(`key`))")
+    }
+}
+
 class Converters {
     @TypeConverter fun dirToString(d: Direction) = d.name
     @TypeConverter fun stringToDir(s: String) = Direction.valueOf(s)
@@ -64,6 +70,18 @@ interface TransactionDao {
 }
 
 @Dao
+interface BalanceAnchorDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(a: BalanceAnchor)
+
+    @Query("DELETE FROM balance_anchors WHERE `key` = :key")
+    suspend fun delete(key: String)
+
+    @Query("SELECT * FROM balance_anchors")
+    fun all(): Flow<List<BalanceAnchor>>
+}
+
+@Dao
 interface ProcessedEmailDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(row: ProcessedEmail)
@@ -112,8 +130,8 @@ interface ProcessedSmsDao {
 }
 
 @Database(
-    entities = [Transaction::class, Account::class, MerchantRule::class, ProcessedSms::class, ProcessedEmail::class],
-    version = 2,
+    entities = [Transaction::class, Account::class, MerchantRule::class, ProcessedSms::class, ProcessedEmail::class, BalanceAnchor::class],
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -123,12 +141,14 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun merchantRules(): MerchantRuleDao
     abstract fun processedSms(): ProcessedSmsDao
     abstract fun processedEmail(): ProcessedEmailDao
+    abstract fun balanceAnchors(): BalanceAnchorDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "finance_brain.db")
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_2_3)
+                .fallbackToDestructiveMigrationFrom(1)
                 .build().also { instance = it }
         }
     }

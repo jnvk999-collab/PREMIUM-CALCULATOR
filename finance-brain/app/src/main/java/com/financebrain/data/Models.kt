@@ -57,6 +57,21 @@ data class ProcessedSms(
     val parsed: Boolean,
 )
 
+/**
+ * A balance the user typed in. From this point the app keeps the balance running:
+ * credits add, debits subtract. key is "ALL" for the combined balance, or "bank|tail".
+ */
+@Entity(tableName = "balance_anchors")
+data class BalanceAnchor(
+    @PrimaryKey val key: String,
+    val amountPaise: Long,
+    val at: Long,
+) {
+    val isTotal get() = key == "ALL"
+    val bank get() = key.substringBefore('|')
+    val tail get() = key.substringAfter('|', "")
+}
+
 /** Tracks which Gmail messages were already processed. */
 @Entity(tableName = "processed_email")
 data class ProcessedEmail(

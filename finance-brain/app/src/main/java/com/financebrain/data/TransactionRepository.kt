@@ -12,6 +12,10 @@ class TransactionRepository(private val db: AppDatabase) {
     val transactions: Flow<List<Transaction>> = db.transactions().all()
     val accounts: Flow<List<Account>> = db.accounts().all()
     val count: Flow<Int> = db.transactions().count()
+    val balanceAnchors: Flow<List<BalanceAnchor>> = db.balanceAnchors().all()
+
+    suspend fun setBalance(key: String, amountPaise: Long, at: Long) = db.balanceAnchors().upsert(BalanceAnchor(key, amountPaise, at))
+    suspend fun clearBalance(key: String) = db.balanceAnchors().delete(key)
 
     fun between(from: Long, to: Long) = db.transactions().between(from, to)
 

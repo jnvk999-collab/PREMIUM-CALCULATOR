@@ -9,6 +9,7 @@ import com.financebrain.brain.BrainAsk
 import com.financebrain.brain.BrainReport
 import com.financebrain.brain.BrainSettings
 import com.financebrain.data.Account
+import com.financebrain.data.BalanceAnchor
 import com.financebrain.data.CategoryTotal
 import com.financebrain.data.Direction
 import com.financebrain.data.Insights
@@ -52,8 +53,10 @@ data class HomeState(
     val loans: List<LoanInfo> = emptyList(),
     val investments: List<InvestmentLine> = emptyList(),
     val monthBalance: MonthBalance = MonthBalance(null, null, null),
+    val anchors: List<BalanceAnchor> = emptyList(),
 ) {
-    val totalBalancePaise: Long get() = accounts.sumOf { it.balancePaise ?: 0 }
+    val totalBalancePaise: Long get() = monthBalance.nowPaise ?: accounts.sumOf { it.balancePaise ?: 0 }
+    val hasTotalAnchor: Boolean get() = anchors.any { it.isTotal }
     val savedPaise: Long get() = incomePaise - expensePaise - investedPaise
 }
 
@@ -149,11 +152,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _scan = MutableStateFlow<ScanProgress?>(null)
     val scan: StateFlow<ScanProgress?> = _scan
 
-    val state: StateFlow<HomeState> = combine(_month, repo.transactions, repo.accounts) { m, all, accounts ->
+    val state: StateFlow<HomeState> = combine(_month, repo.transactions, repo.accounts, repo.balanceAnchors) { m, all, accounts, anchors ->
         val end = monthEnd(m)
         val inMonth = all.filter { it.timestamp in m until end }
         val now = System.currentTimeMillis()
-        val months = Insights.monthSeries(all, 12, m)
+        val months = Insights.monthSeries(all, 12, m, anchors)
         val recurring = Insights.recurring(all, now)
         HomeState(
             month = m,
@@ -173,11 +176,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             salary = Insights.salary(all, recurring.filter { it.direction == Direction.CREDIT }, now),
             loans = Insights.loans(all, recurring.filter { it.direction == Direction.DEBIT }, now),
             investments = Insights.investments(all, recurring.filter { it.direction == Direction.DEBIT }),
-            monthBalance = Insights.monthBalance(all, m, end, now),
+            monthBalance = Insights.monthBalance(all, anchors, m, end, now),
+            anchors = anchors,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState(_month.value))
 
     fun setMonth(m: Long) { _month.value = monthStart(m) }
+
+    fun setBalance(key: String, amountPaise: Long, at: Long) = viewModelScope.launch { repo.setBalance(key, amountPaise, at) }
+    fun clearBalance(key: String) = viewModelScope.launch { repo.clearBalance(key) }
     fun shiftMonth(delta: Int) { _month.value = shiftMonth(_month.value, delta) }
 
     fun scanInbox(full: Boolean = false) {

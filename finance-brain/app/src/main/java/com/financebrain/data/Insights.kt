@@ -49,7 +49,7 @@ object Insights {
         return arr
     }
 
-    fun monthSeries(all: List<Transaction>, months: Int, now: Long): List<MonthSummary> {
+    fun monthSeries(all: List<Transaction>, months: Int, now: Long, anchors: List<BalanceAnchor> = emptyList()): List<MonthSummary> {
         val out = ArrayList<MonthSummary>()
         for (i in (months - 1) downTo 0) {
             val start = Calendar.getInstance().apply { timeInMillis = monthStart(now); add(Calendar.MONTH, -i) }.timeInMillis
@@ -60,10 +60,48 @@ object Insights {
                 inMonth.filter(::isIncome).sumOf { it.amountPaise },
                 inMonth.filter(::isSpend).sumOf { it.amountPaise },
                 inMonth.filter(::isInvestment).sumOf { it.amountPaise },
-                endBalance(all, end),
+                balanceAt(all, anchors, minOf(end, now + 1)),
             )
         }
         return out
+    }
+
+    /** Movements that change a bank balance: bank alerts, not cash entries or platform confirmations. */
+    private fun movesBankMoney(t: Transaction) =
+        t.source != Source.MANUAL && t.bank !in com.financebrain.parser.BankSmsParser.investmentPlatforms
+
+    private fun netFlow(rows: List<Transaction>, from: Long, to: Long): Long =
+        rows.filter { it.timestamp > from && it.timestamp <= to && movesBankMoney(it) }
+            .sumOf { if (it.direction == Direction.CREDIT) it.amountPaise else -it.amountPaise }
+
+    /** Balance at [at] carried forward (or backward) from a user-entered anchor. */
+    fun runningBalance(rows: List<Transaction>, anchor: BalanceAnchor, at: Long): Long =
+        if (at >= anchor.at) anchor.amountPaise + netFlow(rows, anchor.at, at)
+        else anchor.amountPaise - netFlow(rows, at, anchor.at)
+
+    /**
+     * Balance across accounts at [at]. A total anchor wins; otherwise per-account anchors are
+     * carried forward and unanchored accounts fall back to the last balance a bank reported.
+     */
+    fun balanceAt(all: List<Transaction>, anchors: List<BalanceAnchor>, at: Long): Long? {
+        anchors.firstOrNull { it.isTotal }?.let { return runningBalance(all, it, at) }
+        val perAccount = anchors.filter { !it.isTotal }
+        val reported = endBalance(all, at)
+        if (perAccount.isEmpty()) return reported
+        var total = 0L
+        val anchoredKeys = perAccount.map { it.key }.toSet()
+        for (a in perAccount) total += runningBalance(all.filter { it.bank == a.bank && it.accountTail == a.tail }, a, at)
+        // Add the last reported balance of accounts without an anchor.
+        val latest = HashMap<String, Transaction>()
+        for (t in all) {
+            if (t.balancePaise == null || t.accountTail == null || t.timestamp >= at) continue
+            val key = t.bank + "|" + t.accountTail
+            if (key in anchoredKeys) continue
+            val cur = latest[key]
+            if (cur == null || t.timestamp > cur.timestamp) latest[key] = t
+        }
+        total += latest.values.sumOf { it.balancePaise!! }
+        return total
     }
 
     /** Sum of each account's last reported balance on or before [at]. Null when no account has reported one. */
@@ -173,6 +211,6 @@ object Insights {
         }.sortedByDescending { it.investedPaise }
     }
 
-    fun monthBalance(all: List<Transaction>, monthStartTs: Long, monthEndTs: Long, now: Long): MonthBalance =
-        MonthBalance(endBalance(all, monthStartTs), endBalance(all, minOf(monthEndTs, now + 1)), endBalance(all, now + 1))
+    fun monthBalance(all: List<Transaction>, anchors: List<BalanceAnchor>, monthStartTs: Long, monthEndTs: Long, now: Long): MonthBalance =
+        MonthBalance(balanceAt(all, anchors, monthStartTs), balanceAt(all, anchors, minOf(monthEndTs, now + 1)), balanceAt(all, anchors, now + 1))
 }
