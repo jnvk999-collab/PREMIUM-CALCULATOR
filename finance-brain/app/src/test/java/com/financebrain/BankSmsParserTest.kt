@@ -144,6 +144,10 @@ class BankSmsParserTest {
         assertNotNull(n); assertEquals(Categories.INVESTMENT, Categorizer.categorize(n!!.counterparty, n.channel, n.direction, null))
     }
 
+    @Test fun unionBankIsIdentified() {
+        assertEquals("Union Bank", BankSmsParser.identifyBank("AD-UNIONB", "Your a/c XX9012 is debited for Rs.500.00 on 12-09-26 ... -Union Bank of India"))
+    }
+
     @Test fun indianGroupingFormatter() {
         assertEquals("₹1,20,450", com.financebrain.ui.formatRupees(12_045_055L))
         assertEquals("₹250", com.financebrain.ui.formatRupees(25_000L))

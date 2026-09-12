@@ -183,6 +183,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setMonth(m: Long) { _month.value = monthStart(m) }
 
+    private val appRef = FinanceBrainApp.get(app)
+    private val _ignoredBanks = MutableStateFlow(appRef.ignoredBanks())
+    val ignoredBanks: StateFlow<Set<String>> = _ignoredBanks
+    val knownBanks: StateFlow<List<String>> = appRef.database.transactions().banks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun setBankIgnored(bank: String, ignored: Boolean) = viewModelScope.launch {
+        val next = _ignoredBanks.value.toMutableSet().apply { if (ignored) add(bank) else remove(bank) }
+        appRef.setIgnoredBanks(next); _ignoredBanks.value = next
+        if (ignored) repo.purgeBank(bank)
+    }
+
     fun setBalance(key: String, amountPaise: Long, at: Long) = viewModelScope.launch { repo.setBalance(key, amountPaise, at) }
     fun clearBalance(key: String) = viewModelScope.launch { repo.clearBalance(key) }
     fun shiftMonth(delta: Int) { _month.value = shiftMonth(_month.value, delta) }

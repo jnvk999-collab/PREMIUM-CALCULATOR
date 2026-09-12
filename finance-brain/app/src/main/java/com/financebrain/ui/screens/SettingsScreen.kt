@@ -23,6 +23,7 @@ import com.financebrain.ui.HomeState
 import com.financebrain.ui.components.SectionCard
 import com.financebrain.ui.components.SectionTitle
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     state: HomeState,
@@ -46,6 +47,9 @@ fun SettingsScreen(
     onGmailRemove: (String) -> Unit,
     hasApiKey: Boolean = false,
     onApiKey: (String) -> Unit = {},
+    knownBanks: List<String> = emptyList(),
+    ignoredBanks: Set<String> = emptySet(),
+    onBankIgnored: (String, Boolean) -> Unit = { _, _ -> },
 ) {
     LazyColumn(
         contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
@@ -182,6 +186,24 @@ fun SettingsScreen(
                         else -> OutlinedButton(onClick = onCheckUpdate, enabled = update !is com.financebrain.update.UpdateState.Checking && update !is com.financebrain.update.UpdateState.Downloading) { Text("Check for updates") }
                     }
                 }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Banks to ignore")
+                Text("Messages from these are dropped and their entries removed. Useful for accounts that are not yours or that you track elsewhere.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                val all = (knownBanks + ignoredBanks + listOf("Union Bank")).distinct().sorted()
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    all.forEach { b ->
+                        androidx.compose.material3.FilterChip(
+                            selected = b in ignoredBanks, onClick = { onBankIgnored(b, b !in ignoredBanks) },
+                            label = { Text(if (b in ignoredBanks) "✕ $b" else b) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Selected = ignored. Tap a bank to toggle. Re-enable and run Full rescan to bring it back.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         item {

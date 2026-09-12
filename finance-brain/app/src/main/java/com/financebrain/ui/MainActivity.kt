@@ -139,6 +139,8 @@ private fun App(vm: MainViewModel) {
     val gmailError by vm.gmailError.collectAsStateWithLifecycle()
     val chat by vm.chat.collectAsStateWithLifecycle()
     val hasApiKey by vm.hasApiKey.collectAsStateWithLifecycle()
+    val knownBanks by vm.knownBanks.collectAsStateWithLifecycle()
+    val ignoredBanks by vm.ignoredBanks.collectAsStateWithLifecycle()
     val gmailLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { vm.finishGmailSignIn(it.data) }
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var selected by remember { mutableStateOf<Transaction?>(null) }
@@ -171,7 +173,7 @@ private fun App(vm: MainViewModel) {
             Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { requestSms() }, { openAppSettings() }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate,
                 gmail, gmailProgress, gmailClientId, gmailError, vm::setGmailClientId,
                 { vm.clearGmailError(); gmailLauncher.launch(vm.gmailAuth.signInIntent(gmailClientId)) }, vm::syncGmail, vm::removeGmail,
-                hasApiKey, vm::setApiKey)
+                hasApiKey, vm::setApiKey, knownBanks, ignoredBanks, vm::setBankIgnored)
         }
     }
 

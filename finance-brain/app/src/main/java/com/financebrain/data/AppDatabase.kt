@@ -43,6 +43,12 @@ interface TransactionDao {
     @Query("DELETE FROM transactions WHERE source = :source")
     suspend fun deleteBySource(source: Source)
 
+    @Query("DELETE FROM transactions WHERE bank = :bank")
+    suspend fun deleteByBank(bank: String)
+
+    @Query("SELECT DISTINCT bank FROM transactions ORDER BY bank")
+    fun banks(): Flow<List<String>>
+
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
     fun all(): Flow<List<Transaction>>
 
@@ -103,6 +109,9 @@ interface AccountDao {
 
     @Query("DELETE FROM accounts WHERE balancePaise IS NULL")
     suspend fun deleteWithoutBalance()
+
+    @Query("DELETE FROM accounts WHERE bank = :bank")
+    suspend fun deleteByBank(bank: String)
 
     @Query("DELETE FROM accounts")
     suspend fun clear()

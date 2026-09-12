@@ -6,8 +6,14 @@ import java.security.MessageDigest
 import java.util.Calendar
 import kotlinx.coroutines.flow.Flow
 
-class TransactionRepository(private val db: AppDatabase) {
+class TransactionRepository(private val db: AppDatabase, private val ignoredBanks: () -> Set<String> = { emptySet() }) {
     companion object { const val IGNORED = "__ignored__" }
+
+    /** Remove everything from a bank the user does not want tracked. */
+    suspend fun purgeBank(bank: String) {
+        db.transactions().deleteByBank(bank)
+        db.accounts().deleteByBank(bank)
+    }
 
     val transactions: Flow<List<Transaction>> = db.transactions().all()
     val accounts: Flow<List<Account>> = db.accounts().all()
@@ -21,6 +27,7 @@ class TransactionRepository(private val db: AppDatabase) {
 
     /** Stores a parsed alert. Returns true when it was new. */
     suspend fun ingest(p: ParsedTransaction, raw: String, source: Source): Boolean {
+        if (p.bank in ignoredBanks()) return false
         // An email for a payment the SMS already captured: keep the SMS row, but borrow the
         // merchant name if the SMS only had a generic one.
         val platformConfirmation = p.accountKind == "INVEST"
