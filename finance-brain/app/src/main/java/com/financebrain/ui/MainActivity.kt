@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sms
@@ -48,6 +49,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financebrain.data.Transaction
 import com.financebrain.ui.screens.AddTransactionSheet
+import com.financebrain.ui.screens.BrainScreen
 import com.financebrain.ui.screens.HomeScreen
 import com.financebrain.ui.screens.InsightsScreen
 import com.financebrain.ui.screens.SettingsScreen
@@ -68,6 +70,7 @@ class MainActivity : ComponentActivity() {
 private enum class Tab(val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     Home("Home", Icons.Default.Home),
     Transactions("Activity", Icons.Default.ReceiptLong),
+    Brain("Brain", Icons.Default.Psychology),
     Insights("Insights", Icons.Default.Insights),
     Settings("Settings", Icons.Default.Settings),
 }
@@ -133,6 +136,8 @@ private fun App(vm: MainViewModel) {
     val gmailProgress by vm.gmailProgress.collectAsStateWithLifecycle()
     val gmailClientId by vm.gmailClientId.collectAsStateWithLifecycle()
     val gmailError by vm.gmailError.collectAsStateWithLifecycle()
+    val chat by vm.chat.collectAsStateWithLifecycle()
+    val hasApiKey by vm.hasApiKey.collectAsStateWithLifecycle()
     val gmailLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { vm.finishGmailSignIn(it.data) }
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var selected by remember { mutableStateOf<Transaction?>(null) }
@@ -157,12 +162,14 @@ private fun App(vm: MainViewModel) {
         }
     ) { padding ->
         when (tab) {
-            Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions })
+            Tab.Home -> HomeScreen(state, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, { tab = Tab.Transactions }, { tab = Tab.Brain })
+            Tab.Brain -> BrainScreen(state.report, state.month, chat, hasApiKey, padding, vm::ask) { tab = Tab.Settings }
             Tab.Transactions -> TransactionsScreen(state.allTransactions, padding) { selected = it }
             Tab.Insights -> InsightsScreen(state, padding)
             Tab.Settings -> SettingsScreen(state, scan, smsGranted, padding, { requestSms() }, { openAppSettings() }, { full -> vm.scanInbox(full) }, update, vm::checkForUpdate, vm::downloadUpdate, vm::installUpdate,
                 gmail, gmailProgress, gmailClientId, gmailError, vm::setGmailClientId,
-                { vm.clearGmailError(); gmailLauncher.launch(vm.gmailAuth.signInIntent(gmailClientId)) }, vm::syncGmail, vm::removeGmail)
+                { vm.clearGmailError(); gmailLauncher.launch(vm.gmailAuth.signInIntent(gmailClientId)) }, vm::syncGmail, vm::removeGmail,
+                hasApiKey, vm::setApiKey)
         }
     }
 

@@ -18,7 +18,10 @@ class FinanceBrainApp : Application() {
     override fun onCreate() {
         super.onCreate()
         GmailSyncWorker.schedule(this)
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { repository.pruneAccounts() }
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            repository.pruneAccounts()
+            repository.detectInternalTransfers()
+        }
     }
 
     companion object {

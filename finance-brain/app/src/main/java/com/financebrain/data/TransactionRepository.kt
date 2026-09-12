@@ -107,6 +107,33 @@ class TransactionRepository(private val db: AppDatabase) {
         db.processedSms().clear()
     }
 
+    /**
+     * Money moved between your own accounts shows up twice: a debit on one account and a credit
+     * on another, same amount, within a few days. Both legs are marked as transfers so they
+     * never count as spending or income.
+     */
+    suspend fun detectInternalTransfers(): Int {
+        val all = db.transactions().allNow().filter { !it.userEdited && it.source != Source.MANUAL }
+        val debits = all.filter { it.direction == Direction.DEBIT && !it.isTransfer }
+        val credits = all.filter { it.direction == Direction.CREDIT && !it.isTransfer }.groupBy { it.amountPaise }
+        val usedCredits = HashSet<Long>()
+        val changed = ArrayList<Transaction>()
+        val window = 3 * 86_400_000L
+        for (d in debits) {
+            if (d.amountPaise < 50_000) continue // ignore tiny amounts; too many coincidences
+            val c = credits[d.amountPaise]?.firstOrNull { c ->
+                c.id !in usedCredits &&
+                    kotlin.math.abs(c.timestamp - d.timestamp) <= window &&
+                    (c.bank != d.bank || c.accountTail != d.accountTail)
+            } ?: continue
+            usedCredits += c.id
+            changed += d.copy(isTransfer = true, category = Categories.TRANSFER)
+            changed += c.copy(isTransfer = true, category = Categories.TRANSFER)
+        }
+        if (changed.isNotEmpty()) db.transactions().updateAll(changed)
+        return changed.size / 2
+    }
+
     /** Drop account rows that never received a balance (created by older parser versions). */
     suspend fun pruneAccounts() = db.accounts().deleteWithoutBalance()
 

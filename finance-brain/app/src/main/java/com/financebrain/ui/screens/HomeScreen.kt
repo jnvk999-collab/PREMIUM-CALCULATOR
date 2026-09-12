@@ -74,6 +74,7 @@ fun HomeScreen(
     onShiftMonth: (Int) -> Unit,
     onOpenTransaction: (Transaction) -> Unit,
     onSeeAll: () -> Unit,
+    onOpenBrain: () -> Unit = {},
 ) {
     val now = System.currentTimeMillis()
     val isCurrentMonth = state.month == monthStart(now)
@@ -100,6 +101,19 @@ fun HomeScreen(
         if (scan != null && !scan.done) item { ScanBanner(scan) }
 
         item { HeroCard(state) }
+
+        state.report?.let { r ->
+            item {
+                SectionCard {
+                    SectionTitle("Brain says", "Open", onOpenBrain)
+                    Text(r.headline, style = MaterialTheme.typography.bodyMedium)
+                    if (r.actions.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Next step: ${r.actions.first()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
 
         item { AccountsRow(state) }
 
@@ -217,10 +231,11 @@ private fun HeroCard(state: HomeState) {
                     style = MaterialTheme.typography.bodySmall, color = Mint.copy(alpha = 0.85f)
                 )
                 Spacer(Modifier.height(18.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     HeroStat("Income", state.incomePaise, Modifier.weight(1f))
                     HeroStat("Spent", state.expensePaise, Modifier.weight(1f))
-                    HeroStat("Saved", state.savedPaise, Modifier.weight(1f))
+                    HeroStat("Invested", state.investedPaise, Modifier.weight(1f))
+                    HeroStat("Left", state.savedPaise, Modifier.weight(1f))
                 }
             }
         }
@@ -229,9 +244,9 @@ private fun HeroCard(state: HomeState) {
 
 @Composable
 private fun HeroStat(label: String, paise: Long, modifier: Modifier) {
-    Column(modifier.background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.10f), RoundedCornerShape(14.dp)).padding(12.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = Mint)
-        Text(compactRupees(paise), style = MaterialTheme.typography.titleMedium, color = androidx.compose.ui.graphics.Color.White, maxLines = 1)
+    Column(modifier.background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.10f), RoundedCornerShape(14.dp)).padding(horizontal = 10.dp, vertical = 12.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = Mint, maxLines = 1)
+        Text(compactRupees(paise), style = MaterialTheme.typography.titleSmall, color = androidx.compose.ui.graphics.Color.White, maxLines = 1)
     }
 }
 

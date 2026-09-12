@@ -4,6 +4,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.financebrain.FinanceBrainApp
+import com.financebrain.brain.BrainAnalyzer
+import com.financebrain.brain.BrainAsk
+import com.financebrain.brain.BrainReport
+import com.financebrain.brain.BrainSettings
 import com.financebrain.data.Account
 import com.financebrain.data.CategoryTotal
 import com.financebrain.data.Direction
@@ -32,15 +36,17 @@ data class HomeState(
     val accounts: List<Account> = emptyList(),
     val incomePaise: Long = 0,
     val expensePaise: Long = 0,
+    val investedPaise: Long = 0,
     val categories: List<CategoryTotal> = emptyList(),
     val daily: LongArray = LongArray(0),
     val recurring: List<Recurring> = emptyList(),
     val months: List<MonthSummary> = emptyList(),
     val topMerchants: List<Pair<String, Long>> = emptyList(),
     val totalCount: Int = 0,
+    val report: BrainReport? = null,
 ) {
     val totalBalancePaise: Long get() = accounts.sumOf { it.balancePaise ?: 0 }
-    val savedPaise: Long get() = incomePaise - expensePaise
+    val savedPaise: Long get() = incomePaise - expensePaise - investedPaise
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -50,6 +56,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val gmailAccounts = FinanceBrainApp.get(app).gmailAccounts
     private val gmailSyncer = FinanceBrainApp.get(app).gmailSyncer
     val gmailAuth = GmailAuth(app)
+    private val brainSettings = BrainSettings(app)
+    private val brainAsk = BrainAsk(brainSettings)
+
+    data class Exchange(val question: String, val answer: String?)
+    private val _chat = MutableStateFlow<List<Exchange>>(emptyList())
+    val chat: StateFlow<List<Exchange>> = _chat
+    private val _hasApiKey = MutableStateFlow(brainSettings.apiKey.isNotBlank())
+    val hasApiKey: StateFlow<Boolean> = _hasApiKey
+
+    fun setApiKey(key: String) { brainSettings.apiKey = key; _hasApiKey.value = key.isNotBlank() }
+
+    fun ask(question: String) {
+        val q = question.trim(); if (q.isBlank()) return
+        val s = state.value
+        _chat.value = _chat.value + Exchange(q, null)
+        viewModelScope.launch {
+            val ctx = brainAsk.buildContext(s.allTransactions, s.months, s.accounts, s.recurring, s.report ?: BrainAnalyzer.analyze(s.allTransactions, s.months, s.month, s.recurring, System.currentTimeMillis()), s.month)
+            val a = brainAsk.ask(q, ctx)
+            _chat.value = _chat.value.map { if (it.question == q && it.answer == null) it.copy(answer = a) else it }
+        }
+    }
 
     private val _gmail = MutableStateFlow(gmailAccounts.list())
     val gmail: StateFlow<List<GmailAccount>> = _gmail
@@ -79,6 +106,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun syncGmail() = viewModelScope.launch {
         _gmailError.value = null
         gmailSyncer.syncAll()
+        repo.detectInternalTransfers()
         _gmail.value = gmailAccounts.list()
     }
 
@@ -117,6 +145,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val end = monthEnd(m)
         val inMonth = all.filter { it.timestamp in m until end }
         val now = System.currentTimeMillis()
+        val months = Insights.monthSeries(all, 12, m)
+        val recurring = Insights.recurring(all, now)
         HomeState(
             month = m,
             monthTransactions = inMonth,
@@ -124,12 +154,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             accounts = accounts,
             incomePaise = inMonth.filter(Insights::isIncome).sumOf { it.amountPaise },
             expensePaise = inMonth.filter(Insights::isSpend).sumOf { it.amountPaise },
+            investedPaise = inMonth.filter(Insights::isInvestment).sumOf { it.amountPaise },
             categories = Insights.categoryTotals(inMonth),
             daily = Insights.dailySpend(inMonth, daysInMonth(m)),
-            recurring = Insights.recurring(all, now),
-            months = Insights.monthSeries(all, 6, m),
+            recurring = recurring,
+            months = months,
             topMerchants = Insights.topMerchants(inMonth),
             totalCount = all.size,
+            report = if (all.isEmpty()) null else BrainAnalyzer.analyze(all, months, m, recurring, now),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState(_month.value))
 
@@ -142,6 +174,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (full) repo.purgeSms()
             _scan.value = ScanProgress(0, 0, 0, false)
             scanner.scan { _scan.value = it }
+            repo.detectInternalTransfers()
         }
     }
 

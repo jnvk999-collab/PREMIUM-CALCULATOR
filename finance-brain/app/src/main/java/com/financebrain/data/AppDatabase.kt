@@ -46,6 +46,12 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE id = :id")
     suspend fun byId(id: Long): Transaction?
 
+    @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
+    suspend fun allNow(): List<Transaction>
+
+    @Update
+    suspend fun updateAll(rows: List<Transaction>)
+
     @Query("SELECT COUNT(*) FROM transactions")
     fun count(): Flow<Int>
 

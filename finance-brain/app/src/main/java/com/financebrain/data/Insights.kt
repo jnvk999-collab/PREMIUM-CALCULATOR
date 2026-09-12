@@ -8,13 +8,18 @@ data class CategoryTotal(val category: String, val paise: Long, val share: Float
 
 data class Recurring(val name: String, val amountPaise: Long, val nextDue: Long, val category: String, val occurrences: Int)
 
-data class MonthSummary(val monthStart: Long, val incomePaise: Long, val expensePaise: Long)
+data class MonthSummary(val monthStart: Long, val incomePaise: Long, val expensePaise: Long, val investedPaise: Long = 0, val endBalancePaise: Long? = null) {
+    val savedPaise get() = incomePaise - expensePaise - investedPaise
+}
 
 object Insights {
 
-    /** Spending only: debits that are not transfers between own accounts. */
-    fun isSpend(t: Transaction) = t.direction == Direction.DEBIT && !t.isTransfer
-    fun isIncome(t: Transaction) = t.direction == Direction.CREDIT && !t.isTransfer
+    /** Spending only: debits that are neither transfers between own accounts nor investments. */
+    fun isSpend(t: Transaction) = t.direction == Direction.DEBIT && !t.isTransfer && t.category != Categories.INVESTMENT
+    fun isIncome(t: Transaction) = t.direction == Direction.CREDIT && !t.isTransfer && t.category != Categories.INVESTMENT
+    fun isInvestment(t: Transaction) = t.direction == Direction.DEBIT && !t.isTransfer && t.category == Categories.INVESTMENT
+    /** Money coming back from investments (redemptions) is not income. */
+    fun isRedemption(t: Transaction) = t.direction == Direction.CREDIT && t.category == Categories.INVESTMENT
 
     fun categoryTotals(list: List<Transaction>): List<CategoryTotal> {
         val spends = list.filter(::isSpend)
@@ -39,9 +44,28 @@ object Insights {
             val start = Calendar.getInstance().apply { timeInMillis = monthStart(now); add(Calendar.MONTH, -i) }.timeInMillis
             val end = Calendar.getInstance().apply { timeInMillis = start; add(Calendar.MONTH, 1) }.timeInMillis
             val inMonth = all.filter { it.timestamp in start until end }
-            out += MonthSummary(start, inMonth.filter(::isIncome).sumOf { it.amountPaise }, inMonth.filter(::isSpend).sumOf { it.amountPaise })
+            out += MonthSummary(
+                start,
+                inMonth.filter(::isIncome).sumOf { it.amountPaise },
+                inMonth.filter(::isSpend).sumOf { it.amountPaise },
+                inMonth.filter(::isInvestment).sumOf { it.amountPaise },
+                endBalance(all, end),
+            )
         }
         return out
+    }
+
+    /** Sum of each account's last reported balance on or before [at]. Null when no account has reported one. */
+    fun endBalance(all: List<Transaction>, at: Long): Long? {
+        val latest = HashMap<String, Transaction>()
+        for (t in all) {
+            if (t.balancePaise == null || t.accountTail == null || t.timestamp >= at) continue
+            val key = t.bank + "|" + t.accountTail
+            val cur = latest[key]
+            if (cur == null || t.timestamp > cur.timestamp) latest[key] = t
+        }
+        if (latest.isEmpty()) return null
+        return latest.values.sumOf { it.balancePaise!! }
     }
 
     fun topMerchants(list: List<Transaction>, n: Int = 5): List<Pair<String, Long>> =

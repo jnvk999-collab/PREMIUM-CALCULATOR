@@ -44,6 +44,8 @@ fun SettingsScreen(
     onGmailAdd: () -> Unit,
     onGmailSync: () -> Unit,
     onGmailRemove: (String) -> Unit,
+    hasApiKey: Boolean = false,
+    onApiKey: (String) -> Unit = {},
 ) {
     LazyColumn(
         contentPadding = PaddingValues(16.dp, padding.calculateTopPadding() + 8.dp, 16.dp, padding.calculateBottomPadding() + 96.dp),
@@ -135,6 +137,27 @@ fun SettingsScreen(
                 }
                 Spacer(Modifier.height(6.dp))
                 Text("Full rescan rebuilds everything from SMS with the latest parser. Cash entries and your category corrections are kept.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Ask Finance Brain")
+                var key by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+                Text(
+                    if (hasApiKey) "Connected. Ask questions in the Brain tab." else "Questions in plain English are answered by Claude using your data. Get an API key at console.anthropic.com → API keys, paste it here. It is stored encrypted on this phone and used only for your questions.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.material3.OutlinedTextField(
+                    value = key, onValueChange = { key = it }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    label = { Text(if (hasApiKey) "Replace API key" else "Anthropic API key (sk-ant-…)") },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation()
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { onApiKey(key); key = "" }, enabled = key.startsWith("sk-ant-")) { Text("Save key") }
+                    if (hasApiKey) OutlinedButton(onClick = { onApiKey("") }) { Text("Remove") }
+                }
             }
         }
         item {

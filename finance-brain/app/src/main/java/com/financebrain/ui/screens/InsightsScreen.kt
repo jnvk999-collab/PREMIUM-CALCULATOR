@@ -42,7 +42,7 @@ import com.financebrain.ui.theme.Teal
 
 @Composable
 fun InsightsScreen(state: HomeState, padding: PaddingValues) {
-    val months = state.months
+    val months = state.months.takeLast(6)
     val prev = months.dropLast(1).lastOrNull()
     val cur = months.lastOrNull()
     val delta = if (prev != null && cur != null && prev.expensePaise > 0) ((cur.expensePaise - prev.expensePaise) * 100 / prev.expensePaise) else null
@@ -92,13 +92,38 @@ fun InsightsScreen(state: HomeState, padding: PaddingValues) {
         }
         item {
             SectionCard {
-                SectionTitle("Monthly totals")
+                SectionTitle("Monthly totals", "income · spent · invested")
                 months.reversed().forEach { m ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(formatMonth(m.monthStart), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                         Text("+${compactRupees(m.incomePaise)}", style = MaterialTheme.typography.bodyMedium, color = Leaf, modifier = Modifier.width(78.dp))
                         Text("-${compactRupees(m.expensePaise)}", style = MaterialTheme.typography.bodyMedium, color = Coral, modifier = Modifier.width(78.dp))
-                        Text(compactRupees(m.incomePaise - m.expensePaise), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(70.dp))
+                        Text(compactRupees(m.investedPaise), style = MaterialTheme.typography.bodyMedium, color = Teal, modifier = Modifier.width(70.dp))
+                    }
+                }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Balance at month end")
+                val withBal = months.filter { it.endBalancePaise != null }
+                if (withBal.isEmpty()) EmptyHint("Appears once bank alerts report balances.")
+                else {
+                    val max = withBal.maxOf { it.endBalancePaise!! }.coerceAtLeast(1).toFloat()
+                    Canvas(Modifier.fillMaxWidth().height(110.dp)) {
+                        val slot = size.width / withBal.size
+                        val bw = slot * 0.5f
+                        withBal.forEachIndexed { i, m ->
+                            val h = m.endBalancePaise!! / max * size.height
+                            drawRoundRect(Teal, Offset(i * slot + (slot - bw) / 2, size.height - h), Size(bw, h.coerceAtLeast(2f)), CornerRadius(8f, 8f))
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                        withBal.forEach { Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(formatMonthShort(it.monthStart), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(compactRupees(it.endBalancePaise!!), style = MaterialTheme.typography.labelSmall)
+                        } }
                     }
                 }
             }
