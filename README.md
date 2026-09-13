@@ -71,3 +71,7 @@ A public GitHub Pages repo means this file is readable by anyone with the link. 
 ## WhatsApp automation
 
 `whatsapp-bot/` turns this calculator into a WhatsApp auto-responder: incoming photos are archived and merged into one PDF, and one-line requests such as `quote bike 125cc 2021 idv 60000` are priced by this very `index.html` running headlessly and answered with a breakdown plus the quote PDF. See `whatsapp-bot/README.md`.
+
+## Kids learning app
+
+`kids-learn/` is a separate offline K-5 practice app (maths, spelling, reading, times tables, daily challenge, parent dashboard) built in the same single-file PWA style. It is meant to sit beside the Infinity Learn K5 app on a child's phone. See `kids-learn/README.md` for the install steps and a weekly plan.
