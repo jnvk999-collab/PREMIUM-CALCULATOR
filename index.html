@@ -16048,6 +16048,39 @@ window.FIRE = {calculate: (typeof calculate==='function'? calculate : function()
 <div id="selfTestPanel" style="display:none;position:fixed;left:12px;right:12px;bottom:34px;max-height:62vh;overflow:auto;z-index:9998;background:#fff;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.18);padding:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:13px">Self-test</b><span><button onclick="runSelfTest()" style="font-size:12px;padding:4px 10px;margin-right:6px">Re-run</button><button onclick="document.getElementById('selfTestPanel').style.display='none'" style="font-size:12px;padding:4px 10px">Close</button></span></div><div id="selfTestOut"></div></div>
 <div id="buildStamp" style="position:fixed;bottom:4px;right:8px;z-index:9999;font-size:10px;color:#94a3b8;font-family:monospace;cursor:pointer;opacity:.85" onclick="document.getElementById('selfTestPanel').style.display='block';runSelfTest();" title="Click to run the built-in regression suite">build v42 · checkbox visibility fix · 25-Jul-2026</div>
 <script>console.log('OIC Calculator build v42 (global checkbox visibility fix), 25-Jul-2026');</script>
+<!-- ===== Update check: paste this block just before </body> in index.html (the live one) =====
+     When someone opens an OLD copy of the calculator (a file sent on WhatsApp, or a cached one),
+     it checks the live page once a day and shows a bar: "New version available - open it".
+     Nothing shows on the live page itself, or when the copy is already the latest build. -->
+<script>
+(function(){
+  var LIVE='https://nvkoicl.github.io/PREMIUM-CALCULATOR/';
+  try{
+    if(location.hostname==='nvkoicl.github.io') return;               // the live page updates itself
+    var stamp=document.getElementById('buildStamp');
+    var m=stamp&&/build v(\d+)/i.exec(stamp.textContent||'');
+    var mine=m?parseInt(m[1],10):0;
+    var key='oic_calc_livebuild', cached=null;
+    try{cached=JSON.parse(localStorage.getItem(key)||'null');}catch(e){}
+    function show(latest){
+      if(!latest||latest<=mine||document.getElementById('oicUpdateBar')) return;
+      var bar=document.createElement('div'); bar.id='oicUpdateBar';
+      bar.style.cssText='position:fixed;left:0;right:0;top:0;z-index:100000;background:#10213f;color:#fff;font:600 14px/1.4 system-ui,sans-serif;padding:12px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 2px 10px rgba(0,0,0,.3)';
+      bar.innerHTML='<span style="flex:1">⚠️ This copy is old (v'+mine+'). Latest is v'+latest+' - premiums may be wrong.</span>'+
+        '<a href="'+LIVE+'" style="background:#b8932f;color:#fff;text-decoration:none;padding:8px 12px;border-radius:8px;white-space:nowrap">Open new version</a>';
+      document.body.appendChild(bar);
+      document.body.style.paddingTop=(bar.offsetHeight+4)+'px';
+    }
+    if(cached&&Date.now()-cached.at<86400000){ show(cached.build); return; }   // checked in the last 24h
+    fetch(LIVE+'?u='+Date.now(),{cache:'no-store'}).then(function(r){return r.text();}).then(function(html){
+      var l=/build v(\d+)/i.exec(html); var latest=l?parseInt(l[1],10):0;
+      try{localStorage.setItem(key,JSON.stringify({build:latest,at:Date.now()}));}catch(e){}
+      show(latest);
+    }).catch(function(){});
+  }catch(e){}
+})();
+</script>
+
 </body>
 </html>
 
