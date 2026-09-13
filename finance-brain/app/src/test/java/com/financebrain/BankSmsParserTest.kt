@@ -123,6 +123,42 @@ class BankSmsParserTest {
         assertEquals(Categories.CASH, Categorizer.categorize(t.counterparty, t.channel, t.direction, null))
     }
 
+    @Test fun growwSipConfirmation() {
+        val t = p("VM-GROWWW", "Your SIP of Rs 5,000 in Parag Parikh Flexi Cap Fund Direct Growth has been processed successfully. Units will be allotted as per NAV. -Groww")
+        assertNotNull(t); t!!
+        assertEquals("Groww", t.bank); assertEquals(500_000L, t.amountPaise); assertEquals(Direction.DEBIT, t.direction)
+        assertEquals("INVEST", t.channel); assertEquals("Groww · Parag Parikh Flexi Cap Fund Direct Growth", t.counterparty)
+        assertEquals(Categories.INVESTMENT, Categorizer.categorize(t.counterparty, t.channel, t.direction, null))
+    }
+
+    @Test fun growwRedemptionAndReminderIgnored() {
+        val r = p("VM-GROWWW", "Redemption of Rs 12,000 from Axis Bluechip Fund has been processed. Amount will be credited to your bank in 2-3 days. -Groww")
+        assertNotNull(r); assertEquals(Direction.CREDIT, r!!.direction)
+        assertNull(p("VM-GROWWW", "Reminder: Your SIP of Rs 5,000 in Parag Parikh Flexi Cap Fund is due on 15 Sep. Keep sufficient balance. -Groww"))
+    }
+
+    @Test fun bankDebitToClearingCorpIsInvestment() {
+        val t = p("VM-HDFCBK", "Rs.5000.00 debited from a/c **7788 on 15-09-26 to VPA groww.pay@icici (UPI Ref No 525287654321). Not you? Call 18002586161")
+        assertNotNull(t); assertEquals(Categories.INVESTMENT, Categorizer.categorize(t!!.counterparty, t.channel, t.direction, null))
+        val n = p("VM-ICICIB", "ICICI Bank Acct XX123 debited for Rs 10,000.00 on 05-Sep-26; NSE CLEARING LTD credited. UPI:524512345678.")
+        assertNotNull(n); assertEquals(Categories.INVESTMENT, Categorizer.categorize(n!!.counterparty, n.channel, n.direction, null))
+    }
+
+    @Test fun unionBankIsIdentified() {
+        assertEquals("Union Bank", BankSmsParser.identifyBank("AD-UNIONB", "Your a/c XX9012 is debited for Rs.500.00 on 12-09-26 ... -Union Bank of India"))
+    }
+
+    @Test fun bareNumberAfterAccountIsNotATail() {
+        val t = p("VM-ICICIB", "ICICI Bank Acct XX123 debited for Rs 540.00 on 09-Sep-26; RAPIDO credited. UPI:524512345678.")
+        assertEquals("123", t!!.accountTail)
+        val u = p("VM-FEDBNK", "Rs 899.00 debited from your A/c XX5566 on 07SEP2026 towards UPI/525512345678/NETFLIX. Avl Bal Rs 22,110.40 -Federal Bank")
+        assertEquals("5566", u!!.accountTail)
+        val v = p("VM-FEDBNK", "Rs 899.00 debited from your account 2587 ref 525512345678 towards NETFLIX. Avl Bal Rs 22,110.40 -Federal Bank")
+        assertNull(v!!.accountTail)
+        val w = p("VM-SBIINB", "Your A/C ending 1730 Credited INR 45,000.00 on 01/09/26 -Deposit by transfer from RAMESH. Avl Bal INR 1,20,450.55 -SBI")
+        assertEquals("1730", w!!.accountTail)
+    }
+
     @Test fun indianGroupingFormatter() {
         assertEquals("₹1,20,450", com.financebrain.ui.formatRupees(12_045_055L))
         assertEquals("₹250", com.financebrain.ui.formatRupees(25_000L))

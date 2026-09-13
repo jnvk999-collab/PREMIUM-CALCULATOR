@@ -4,10 +4,38 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.financebrain.FinanceBrainApp
+import com.financebrain.brain.BrainAnalyzer
+import com.financebrain.brain.BrainAsk
+import com.financebrain.brain.BrainReport
+import com.financebrain.brain.BrainSettings
 import com.financebrain.data.Account
+import com.financebrain.data.Categories
+import com.financebrain.ui.formatDay
+import com.financebrain.ui.formatRupees
+import com.financebrain.data.Allocation
+import com.financebrain.data.CalendarEvent
+import com.financebrain.data.CardStatus
+import com.financebrain.data.ControlledCategory
+import com.financebrain.data.CreditCard
+import com.financebrain.data.DisciplineEntry
+import com.financebrain.data.DisciplineStatus
+import com.financebrain.data.Goal
+import com.financebrain.data.Holding
+import com.financebrain.data.Loan
+import com.financebrain.data.LoanStatus
+import com.financebrain.data.NetWorth
+import com.financebrain.data.InformalLoan
+import com.financebrain.data.Planning
+import com.financebrain.data.Receivable
+import com.financebrain.data.ZeroTolerance
+import com.financebrain.data.BalanceAnchor
 import com.financebrain.data.CategoryTotal
 import com.financebrain.data.Direction
 import com.financebrain.data.Insights
+import com.financebrain.data.InvestmentLine
+import com.financebrain.data.LoanInfo
+import com.financebrain.data.MonthBalance
+import com.financebrain.data.SalaryInfo
 import com.financebrain.data.MonthSummary
 import com.financebrain.data.Recurring
 import com.financebrain.data.Transaction
@@ -25,6 +53,37 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** One row of the Home account strip: a bank account or a card with its best-known balance. */
+data class AccountView(
+    val bank: String, val tail: String, val isCard: Boolean, val balancePaise: Long?, val source: String,
+    val build: Insights.BalanceBuild? = null,
+)
+
+data class PlanState(
+    val cards: List<CardStatus> = emptyList(),
+    val allocation: Allocation? = null,
+    val calendar: List<CalendarEvent> = emptyList(),
+    val upcoming: List<com.financebrain.data.Upcoming> = emptyList(),
+    val goals: List<Goal> = emptyList(),
+    val receivables: List<Receivable> = emptyList(),
+    val informalLoans: List<InformalLoan> = emptyList(),
+    val discipline: DisciplineStatus? = null,
+    val controlled: List<ControlledCategory> = emptyList(),
+    val zero: List<ZeroTolerance> = emptyList(),
+    val entries: List<DisciplineEntry> = emptyList(),
+    val holdings: List<Holding> = emptyList(),
+    val loanStatuses: List<LoanStatus> = emptyList(),
+    val netWorth: NetWorth? = null,
+    val wealthSections: List<com.financebrain.brain.BrainSection> = emptyList(),
+    val wealthActions: List<String> = emptyList(),
+    val review: List<com.financebrain.data.ReviewItem> = emptyList(),
+    val salaryDay: Int = 1,
+    val investPct: Int = 20,
+    val budgetPaise: Long = 0,
+    val daughterName: String = "",
+    val expectedIncomePaise: Long = 0,
+)
+
 data class HomeState(
     val month: Long,
     val monthTransactions: List<Transaction> = emptyList(),
@@ -32,15 +91,28 @@ data class HomeState(
     val accounts: List<Account> = emptyList(),
     val incomePaise: Long = 0,
     val expensePaise: Long = 0,
+    val investedPaise: Long = 0,
     val categories: List<CategoryTotal> = emptyList(),
     val daily: LongArray = LongArray(0),
     val recurring: List<Recurring> = emptyList(),
     val months: List<MonthSummary> = emptyList(),
     val topMerchants: List<Pair<String, Long>> = emptyList(),
     val totalCount: Int = 0,
+    val report: BrainReport? = null,
+    val salary: SalaryInfo? = null,
+    val loans: List<LoanInfo> = emptyList(),
+    val investments: List<InvestmentLine> = emptyList(),
+    val monthBalance: MonthBalance = MonthBalance(null, null, null),
+    val anchors: List<BalanceAnchor> = emptyList(),
+    val wallet: Insights.BalanceBuild? = null,
+    val accountList: List<AccountView> = emptyList(),
+    val trackingStart: Long = 0,
 ) {
-    val totalBalancePaise: Long get() = accounts.sumOf { it.balancePaise ?: 0 }
-    val savedPaise: Long get() = incomePaise - expensePaise
+    /** Rows that count towards totals. */
+    val tracked: List<Transaction> get() = allTransactions.filter { it.timestamp >= trackingStart }
+    val totalBalancePaise: Long get() = monthBalance.nowPaise ?: accounts.sumOf { it.balancePaise ?: 0 }
+    val hasTotalAnchor: Boolean get() = anchors.any { it.isTotal }
+    val savedPaise: Long get() = incomePaise - expensePaise - investedPaise
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -50,6 +122,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val gmailAccounts = FinanceBrainApp.get(app).gmailAccounts
     private val gmailSyncer = FinanceBrainApp.get(app).gmailSyncer
     val gmailAuth = GmailAuth(app)
+    private val brainSettings = BrainSettings(app)
+    private val brainAsk = BrainAsk(brainSettings)
+
+    data class Exchange(val question: String, val answer: String?)
+    private val _chat = MutableStateFlow<List<Exchange>>(emptyList())
+    val chat: StateFlow<List<Exchange>> = _chat
+    private val _hasApiKey = MutableStateFlow(brainSettings.apiKey.isNotBlank())
+    val hasApiKey: StateFlow<Boolean> = _hasApiKey
+
+    fun setApiKey(key: String) { brainSettings.apiKey = key; _hasApiKey.value = key.isNotBlank() }
+
+    fun ask(question: String) {
+        val q = question.trim(); if (q.isBlank()) return
+        val s = state.value
+        _chat.value = _chat.value + Exchange(q, null)
+        viewModelScope.launch {
+            val p = plan.value
+            val ctx = brainAsk.buildContext(s.allTransactions, s.months, s.accounts, s.recurring, s.report ?: BrainAnalyzer.analyze(s.allTransactions, s.months, s.month, s.recurring, System.currentTimeMillis()), s.month) +
+                buildString {
+                    p.netWorth?.let { append("\nNet worth: assets ${formatRupees(it.assets)}, liabilities ${formatRupees(it.liabilities)}, net ${formatRupees(it.net)}\n") }
+                    if (p.holdings.isNotEmpty()) { append("Holdings (current / invested):\n"); p.holdings.forEach { append("- ${it.name} [${it.type}, ${it.account}]: ${formatRupees(it.currentPaise)} / ${formatRupees(it.investedPaise)}\n") } }
+                    if (p.loanStatuses.isNotEmpty()) { append("Loans:\n"); p.loanStatuses.forEach { append("- ${it.loan.lender}: outstanding ${formatRupees(it.outstandingNowPaise)} at ${it.loan.annualRatePct}%, EMI ${formatRupees(it.loan.emiPaise)}, ${it.monthsLeft} months left, interest left ${formatRupees(it.totalInterestLeftPaise)}\n") } }
+                    p.allocation?.let { append("Cycle plan: free to spend ${formatRupees(it.freeToSpendPaise)}, spent ${formatRupees(it.spentSoFarPaise)}, ${it.daysLeft} days left\n") }
+                    p.wealthSections.forEach { sec -> append("## ${sec.title}\n"); sec.lines.forEach { append("- $it\n") } }
+                }
+            val a = brainAsk.ask(q, ctx)
+            _chat.value = _chat.value.map { if (it.question == q && it.answer == null) it.copy(answer = a) else it }
+        }
+    }
 
     private val _gmail = MutableStateFlow(gmailAccounts.list())
     val gmail: StateFlow<List<GmailAccount>> = _gmail
@@ -73,10 +174,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }.onFailure { _gmailError.value = it.message }
     }
 
-    fun removeGmail(email: String) { gmailAccounts.remove(email); _gmail.value = gmailAccounts.list() }
+    fun removeGmail(email: String) { gmailAccounts.remove(email); _gmail.value = gmailAccounts.list(); _gmailError.value = null }
+    fun clearGmailError() { _gmailError.value = null }
 
     fun syncGmail() = viewModelScope.launch {
+        _gmailError.value = null
         gmailSyncer.syncAll()
+        repo.detectInternalTransfers()
         _gmail.value = gmailAccounts.list()
     }
 
@@ -111,10 +215,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _scan = MutableStateFlow<ScanProgress?>(null)
     val scan: StateFlow<ScanProgress?> = _scan
 
-    val state: StateFlow<HomeState> = combine(_month, repo.transactions, repo.accounts) { m, all, accounts ->
+    private val ignoredAccountsFlow = MutableStateFlow(FinanceBrainApp.get(app).ignoredAccounts())
+    private val trackingStartFlow = MutableStateFlow(FinanceBrainApp.get(app).trackingStart)
+    fun setTrackingStart(ts: Long) { appRef.trackingStart = ts; trackingStartFlow.value = ts }
+
+    val state: StateFlow<HomeState> = combine(
+        combine(_month, repo.transactions, repo.accounts, repo.balanceAnchors) { m, all, accounts, anchors -> arrayOf(m, all, accounts, anchors) },
+        ignoredAccountsFlow, trackingStartFlow,
+    ) { arr, ignoredAcc, trackingStart ->
+        @Suppress("UNCHECKED_CAST")
+        val m = arr[0] as Long; val all = arr[1] as List<Transaction>; val accounts = arr[2] as List<Account>; val anchors = arr[3] as List<BalanceAnchor>
         val end = monthEnd(m)
-        val inMonth = all.filter { it.timestamp in m until end }
         val now = System.currentTimeMillis()
+        // Money totals count only from the tracking start; patterns (recurring, salary) may use all history.
+        val tracked = all.filter { it.timestamp >= trackingStart }
+        val inMonth = tracked.filter { it.timestamp in m until end }
+        val months = Insights.monthSeries(tracked, 12, m, anchors)
+        val recurring = Insights.recurring(all, now)
         HomeState(
             month = m,
             monthTransactions = inMonth,
@@ -122,17 +239,172 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             accounts = accounts,
             incomePaise = inMonth.filter(Insights::isIncome).sumOf { it.amountPaise },
             expensePaise = inMonth.filter(Insights::isSpend).sumOf { it.amountPaise },
+            investedPaise = inMonth.filter(Insights::isInvestment).sumOf { it.amountPaise },
             categories = Insights.categoryTotals(inMonth),
             daily = Insights.dailySpend(inMonth, daysInMonth(m)),
-            recurring = Insights.recurring(all, now),
-            months = Insights.monthSeries(all, 6, m),
+            trackingStart = trackingStart,
+            recurring = recurring,
+            months = months,
             topMerchants = Insights.topMerchants(inMonth),
             totalCount = all.size,
+            report = if (tracked.isEmpty()) null else BrainAnalyzer.analyze(tracked, months, m, recurring, now),
+            salary = Insights.salary(all, recurring.filter { it.direction == Direction.CREDIT }, now),
+            loans = Insights.loans(all, recurring.filter { it.direction == Direction.DEBIT }, now),
+            investments = Insights.investments(tracked, recurring.filter { it.direction == Direction.DEBIT }),
+            monthBalance = Insights.monthBalance(all, anchors, m, end, now),
+            wallet = Insights.wallet(all, anchors, now + 1),
+            anchors = anchors,
+            accountList = all.filter { it.accountTail != null && it.accountKind != "INVEST" }
+                .groupBy { it.bank + "|" + it.accountTail }
+                .filterKeys { it !in ignoredAcc }
+                .map { (key, ts) ->
+                    val bank = key.substringBefore('|'); val tail = key.substringAfter('|')
+                    val isCard = ts.count { it.accountKind == "CARD" } * 2 > ts.size
+                    val anchor = anchors.firstOrNull { it.key == key }
+                    val build = if (isCard) null else Insights.accountBalance(ts, anchor, now + 1)
+                    val source = when {
+                        isCard -> "card"
+                        build == null -> "no balance yet"
+                        build.fromUser -> "you set ${formatRupees(build.basePaise)} on ${formatDay(build.baseAt)}"
+                        else -> "bank said ${formatRupees(build.basePaise)} on ${formatDay(build.baseAt)}"
+                    }
+                    AccountView(bank, tail, isCard, build?.paise, source, build)
+                }.sortedWith(compareBy({ it.isCard }, { it.bank })),
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeState(_month.value))
 
     fun setMonth(m: Long) { _month.value = monthStart(m) }
+
+    private val appRef = FinanceBrainApp.get(app)
+    private val _ignoredBanks = MutableStateFlow(appRef.ignoredBanks())
+    val ignoredBanks: StateFlow<Set<String>> = _ignoredBanks
+    val knownBanks: StateFlow<List<String>> = appRef.database.transactions().banks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _ignoredAccounts = MutableStateFlow(appRef.ignoredAccounts())
+    val ignoredAccounts: StateFlow<Set<String>> = _ignoredAccounts
+    val accountRefs: StateFlow<List<com.financebrain.data.AccountRef>> = repo.accountRefs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun setAccountIgnored(key: String, ignored: Boolean) = viewModelScope.launch {
+        val next = _ignoredAccounts.value.toMutableSet().apply { if (ignored) add(key) else remove(key) }
+        appRef.setIgnoredAccounts(next); _ignoredAccounts.value = next; ignoredAccountsFlow.value = next
+        if (ignored) repo.purgeAccount(key.substringBefore('|'), key.substringAfter('|'))
+    }
+
+    fun setBankIgnored(bank: String, ignored: Boolean) = viewModelScope.launch {
+        val next = _ignoredBanks.value.toMutableSet().apply { if (ignored) add(bank) else remove(bank) }
+        appRef.setIgnoredBanks(next); _ignoredBanks.value = next
+        if (ignored) repo.purgeBank(bank)
+    }
+
+    private val _settingsTick = MutableStateFlow(0)
+    val plan: StateFlow<PlanState> = combine(
+        combine(state, repo.cards, repo.goals, repo.receivables, repo.informalLoans) { s, cards, goals, recv, loans -> arrayOf(s, cards, goals, recv, loans) },
+        combine(repo.controlled, repo.zeroTolerance, repo.disciplineEntries, _settingsTick) { c, z, e, _ -> Triple(c, z, e) },
+        combine(repo.holdings, repo.loans) { h, l -> h to l },
+    ) { a, d, hl ->
+        @Suppress("UNCHECKED_CAST")
+        val s = a[0] as HomeState; val cards = a[1] as List<CreditCard>; val goals = a[2] as List<Goal>
+        val recv = a[3] as List<Receivable>; val loans = a[4] as List<InformalLoan>
+        val now = System.currentTimeMillis()
+        val statuses = cards.map { Planning.cardStatus(it, s.allTransactions, now) }
+        val debits = s.recurring.filter { it.direction == Direction.DEBIT }
+        // Infer salary day and expected income once from the salary credit, unless the user set them.
+        s.salary?.let { sal ->
+            if (!appRef.prefs.contains("salary_day") && !appRef.prefs.getBoolean("salary_day_auto", false)) {
+                val day = java.util.Calendar.getInstance().apply { timeInMillis = sal.lastAt }.get(java.util.Calendar.DAY_OF_MONTH).coerceIn(1, 28)
+                appRef.prefs.edit().putBoolean("salary_day_auto", true).apply()
+                appRef.salaryDay = day
+                _month.value = monthStart(System.currentTimeMillis())
+            }
+            if (appRef.expectedIncomePaise == 0L) appRef.expectedIncomePaise = sal.amountPaise
+        }
+        val loanStatuses = hl.second.map { Planning.loanStatus(it, now) }
+        // Formal loans replace the detected EMI lines with the same amount.
+        val detectedLoans = s.loans.filter { d -> hl.second.none { kotlin.math.abs(it.emiPaise - d.emiPaise) < 2_000_00 } }
+        val nw = Planning.netWorth(s.monthBalance.nowPaise, hl.first, recv, loanStatuses, statuses, loans)
+        val wealth = BrainAnalyzer.wealth(nw, loanStatuses, hl.first, s.salary?.amountPaise ?: s.incomePaise)
+        val review = com.financebrain.data.Review.build(s.tracked, s.allTransactions, s.month, s.accountList, cards, s.salary, appRef.prefs.contains("salary_day"), appRef.expectedIncomePaise > 0, appRef.dismissedReviews())
+        PlanState(
+            review = review,
+            holdings = hl.first, loanStatuses = loanStatuses, netWorth = nw, wealthSections = wealth.first, wealthActions = wealth.second,
+            cards = statuses,
+            allocation = Planning.allocation(s.tracked, s.month, now,
+                s.salary ?: appRef.expectedIncomePaise.takeIf { it > 0 }?.let { com.financebrain.data.SalaryInfo("Expected income", it, 0, 0, 0, "", false) },
+                detectedLoans + hl.second.map { com.financebrain.data.LoanInfo(it.lender, it.emiPaise, Planning.dayToTs(now, it.dueDay), 0, 0, it.type) },
+                statuses, debits, appRef.investTargetPct),
+            calendar = Planning.calendar(s.month, appRef.salaryDay, s.salary, s.loans, statuses, s.recurring),
+            upcoming = Planning.upcoming(
+                now, s.salary,
+                detectedLoans + hl.second.map { com.financebrain.data.LoanInfo(it.lender, it.emiPaise, Planning.dayToTs(now, it.dueDay).let { d -> if (d >= now) d else Planning.dayToTs(now + 31L * 86_400_000L, it.dueDay) }, 0, 0, it.type) },
+                statuses, s.recurring,
+            ),
+            goals = goals, receivables = recv, informalLoans = loans,
+            discipline = Planning.discipline(s.tracked, s.month, d.first, d.second, d.third, now),
+            controlled = d.first, zero = d.second, entries = d.third,
+            salaryDay = appRef.salaryDay, investPct = appRef.investTargetPct, budgetPaise = appRef.monthlyBudgetPaise, daughterName = appRef.daughterName, expectedIncomePaise = appRef.expectedIncomePaise,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanState())
+
+    fun dismissReview(id: String) { appRef.dismissReview(id); _settingsTick.value++ }
+    fun confirmSalary(t: Transaction) = viewModelScope.launch { repo.setCategory(t, Categories.SALARY, true) }
+    fun markTransfer(t: Transaction) = viewModelScope.launch { repo.setCategory(t, Categories.TRANSFER, false) }
+    fun markInvestment(t: Transaction) = viewModelScope.launch { repo.setCategory(t, Categories.INVESTMENT, true) }
+
+    fun setSalaryDay(d: Int) { appRef.salaryDay = d; _month.value = monthStart(System.currentTimeMillis()); _settingsTick.value++ }
+    fun setExpectedIncome(paise: Long) { appRef.expectedIncomePaise = paise; _settingsTick.value++ }
+    val themeMode = MutableStateFlow(appRef.themeMode)
+    fun setThemeMode(m: String) { appRef.themeMode = m; themeMode.value = m }
+    fun setInvestPct(p: Int) { appRef.investTargetPct = p; _settingsTick.value++ }
+    fun setBudget(paise: Long) { appRef.monthlyBudgetPaise = paise; _settingsTick.value++ }
+    fun setDaughterName(n: String) { appRef.daughterName = n; _settingsTick.value++ }
+    fun setDailyAlert(enabled: Boolean, hour: Int) { appRef.dailyAlertEnabled = enabled; appRef.dailyAlertHour = hour; com.financebrain.alerts.DailyAlertWorker.schedule(getApplication()); _settingsTick.value++ }
+
+    fun saveHolding(h: Holding) = viewModelScope.launch { repo.saveHolding(h) }
+    fun deleteHolding(id: Long) = viewModelScope.launch { repo.deleteHolding(id) }
+    fun saveLoan(l: Loan) = viewModelScope.launch { repo.saveLoan(l) }
+    fun deleteLoan(id: Long) = viewModelScope.launch { repo.deleteLoan(id) }
+    fun saveCard(c: CreditCard) = viewModelScope.launch { repo.saveCard(c) }
+    fun deleteCard(key: String) = viewModelScope.launch { repo.deleteCard(key) }
+    fun saveGoal(g: Goal) = viewModelScope.launch { repo.saveGoal(g) }
+    fun deleteGoal(id: Long) = viewModelScope.launch { repo.deleteGoal(id) }
+    fun saveReceivable(r: Receivable) = viewModelScope.launch { repo.saveReceivable(r) }
+    fun deleteReceivable(id: Long) = viewModelScope.launch { repo.deleteReceivable(id) }
+    fun saveInformalLoan(l: InformalLoan) = viewModelScope.launch { repo.saveInformalLoan(l) }
+    fun deleteInformalLoan(id: Long) = viewModelScope.launch { repo.deleteInformalLoan(id) }
+    fun saveControlled(c: ControlledCategory) = viewModelScope.launch { repo.saveControlled(c) }
+    fun deleteControlled(category: String) = viewModelScope.launch { repo.deleteControlled(category) }
+    fun saveZero(z: ZeroTolerance) = viewModelScope.launch { repo.saveZero(z) }
+    fun deleteZero(category: String) = viewModelScope.launch { repo.deleteZero(category) }
+    fun addDisciplineEntry(kind: String, amountPaise: Long, reason: String) = viewModelScope.launch { repo.addDisciplineEntry(DisciplineEntry(kind = kind, amountPaise = amountPaise, reason = reason)) }
+    fun deleteDisciplineEntry(id: Long) = viewModelScope.launch { repo.deleteDisciplineEntry(id) }
+
+    private val backup = com.financebrain.data.BackupManager(app, FinanceBrainApp.get(app).database, repo)
+    private val _toast = MutableStateFlow<String?>(null)
+    val toast: StateFlow<String?> = _toast
+    fun clearToast() { _toast.value = null }
+    fun exportBackup(uri: android.net.Uri) = viewModelScope.launch { _toast.value = try { "Backup saved with ${backup.export(uri)} transactions." } catch (e: Exception) { "Backup failed: ${e.message}" } }
+    fun restoreBackup(uri: android.net.Uri) = viewModelScope.launch { _toast.value = try { backup.restore(uri).also { _settingsTick.value++; _month.value = monthStart(System.currentTimeMillis()) } } catch (e: Exception) { "Restore failed: ${e.message}" } }
+    fun importCsv(uri: android.net.Uri, bank: String) = viewModelScope.launch { _toast.value = try { backup.importCsv(uri, bank) } catch (e: Exception) { "Import failed: ${e.message}" } }
+
+    private val _uncounted = MutableStateFlow<List<com.financebrain.sms.UncountedSms>>(emptyList())
+    val uncounted: StateFlow<List<com.financebrain.sms.UncountedSms>> = _uncounted
+    fun loadUncounted() = viewModelScope.launch { _uncounted.value = try { com.financebrain.sms.Uncounted.recent(getApplication()) } catch (_: Exception) { emptyList() } }
+    fun countUncounted(u: com.financebrain.sms.UncountedSms, direction: Direction) = viewModelScope.launch {
+        val amt = u.amountPaise ?: return@launch
+        val bank = u.sender.substringBefore(" · ")
+        val p = com.financebrain.parser.ParsedTransaction(amt, direction, bank, null, "From message", "OTHER", "sms-${u.id}", null, u.at)
+        repo.ingest(p, u.body, com.financebrain.data.Source.SMS)
+        _uncounted.value = _uncounted.value.filter { it.id != u.id }
+    }
+
+    fun setBalance(key: String, amountPaise: Long, at: Long) = viewModelScope.launch { repo.setBalance(key, amountPaise, at) }
+    fun clearBalance(key: String) = viewModelScope.launch { repo.clearBalance(key) }
     fun shiftMonth(delta: Int) { _month.value = shiftMonth(_month.value, delta) }
+
+    /** Cheap: only unprocessed inbox rows. Called on every resume. */
+    fun scanNew() { if (_scan.value?.done == false) return; viewModelScope.launch { scanner.scan { _scan.value = it }; repo.syncCardsFromTransactions(); repo.detectInternalTransfers() } }
 
     fun scanInbox(full: Boolean = false) {
         if (_scan.value?.done == false) return
@@ -140,6 +412,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (full) repo.purgeSms()
             _scan.value = ScanProgress(0, 0, 0, false)
             scanner.scan { _scan.value = it }
+            repo.syncCardsFromTransactions()
+            repo.detectInternalTransfers()
         }
     }
 

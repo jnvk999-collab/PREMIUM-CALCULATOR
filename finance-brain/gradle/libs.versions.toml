@@ -14,6 +14,7 @@ appauth = "0.11.1"
 browser = "1.8.0"
 securityCrypto = "1.1.0-alpha06"
 work = "2.10.0"
+anthropic = "2.34.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,6 +39,7 @@ appauth = { group = "net.openid", name = "appauth", version.ref = "appauth" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
+anthropic-java = { group = "com.anthropic", name = "anthropic-java", version.ref = "anthropic" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

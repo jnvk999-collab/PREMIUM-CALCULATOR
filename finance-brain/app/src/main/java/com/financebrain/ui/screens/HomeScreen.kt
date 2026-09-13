@@ -1,6 +1,7 @@
 package com.financebrain.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,158 +15,196 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.AccountBalance
-import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.financebrain.data.ReviewItem
 import com.financebrain.data.Transaction
 import com.financebrain.sms.ScanProgress
 import com.financebrain.ui.HomeState
+import com.financebrain.ui.PlanState
 import com.financebrain.ui.compactRupees
-import com.financebrain.ui.components.BarChart
-import com.financebrain.ui.components.CategoryDot
-import com.financebrain.ui.components.EmptyHint
 import com.financebrain.ui.components.SectionCard
 import com.financebrain.ui.components.SectionTitle
-import com.financebrain.ui.components.ShareBar
-import com.financebrain.ui.components.StatPill
 import com.financebrain.ui.components.TransactionRow
 import com.financebrain.ui.components.UpdateCard
-import com.financebrain.ui.components.categoryColor
-import com.financebrain.ui.dayOfMonth
+import com.financebrain.ui.formatCycle
 import com.financebrain.ui.formatDay
-import com.financebrain.ui.formatMonth
 import com.financebrain.ui.formatRupees
 import com.financebrain.ui.monthStart
-import com.financebrain.ui.theme.Coral
-import com.financebrain.ui.theme.Leaf
-import com.financebrain.ui.theme.Mint
-import com.financebrain.ui.theme.Teal
-import com.financebrain.ui.theme.TealDark
+import com.financebrain.ui.theme.P
+import com.financebrain.update.UpdateState
 
+/** Home answers three questions: how much can I spend, how much do I have, what needs me. */
 @Composable
 fun HomeScreen(
-    state: HomeState,
-    scan: ScanProgress?,
-    padding: PaddingValues,
-    update: com.financebrain.update.UpdateState,
-    onUpdateDownload: () -> Unit,
-    onUpdateInstall: () -> Unit,
-    onUpdateDismiss: () -> Unit,
+    state: HomeState, plan: PlanState, scan: ScanProgress?, padding: PaddingValues, update: UpdateState,
+    onUpdateDownload: () -> Unit, onUpdateInstall: () -> Unit, onUpdateDismiss: () -> Unit,
     onShiftMonth: (Int) -> Unit,
     onOpenTransaction: (Transaction) -> Unit,
-    onSeeAll: () -> Unit,
+    onOpen: (String) -> Unit,
+    onSetBalance: (String?) -> Unit,
+    onReview: (ReviewItem, String) -> Unit,
 ) {
+    val p = P
     val now = System.currentTimeMillis()
-    val isCurrentMonth = state.month == monthStart(now)
+    val isCurrent = state.month == monthStart(now)
+    val a = plan.allocation
+    val income = a?.incomePaise ?: state.incomePaise
+    val w = state.wallet
+    // What you have is the plain sum: what you started with, plus what came in, less what went out.
+    val left = w?.paise ?: (income - state.expensePaise - state.investedPaise)
+    val dueSoon = plan.upcoming.filter { !it.isIncome }.sumOf { it.amountPaise }
+    val cardDue = plan.cards.sumOf { it.outstandingPaise + it.currentSpendPaise }
+    val cardLimit = plan.cards.sumOf { it.card.limitPaise ?: 0L }
+    val leftColor = if (left < 0) p.red else if (dueSoon > left) p.orange else p.green
+
     LazyColumn(
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding() + 8.dp, bottom = padding.calculateBottomPadding() + 96.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = padding.calculateTopPadding() + 4.dp, bottom = padding.calculateBottomPadding() + 96.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Finance Brain", style = MaterialTheme.typography.headlineSmall)
+                IconButton(onClick = { onShiftMonth(-1) }, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous month", tint = p.t2) }
+                Text(formatCycle(state.month), style = MaterialTheme.typography.titleMedium, color = p.t1)
+                IconButton(onClick = { onShiftMonth(1) }, enabled = !isCurrent, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next month", tint = if (isCurrent) p.t3 else p.t2) }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = { onOpen("settings") }) { Icon(Icons.Default.Settings, "Settings", tint = p.t2) }
+            }
+        }
+        item { UpdateCard(update, onUpdateDownload, onUpdateInstall, onUpdateDismiss) }
+        if (scan != null && !scan.done) item {
+            SectionCard(tint = p.blue) {
+                Text("Reading your messages · ${scan.scanned}/${scan.total}", style = MaterialTheme.typography.labelMedium, color = p.blue)
+                Spacer(Modifier.height(6.dp))
+                LinearProgressIndicator(progress = { if (scan.total > 0) scan.scanned.toFloat() / scan.total else 0f }, modifier = Modifier.fillMaxWidth(), color = p.blue, trackColor = p.bd)
+            }
+        }
+
+        // 1. How much can I spend
+        item {
+            SectionCard(tint = leftColor) {
+                Text(if (isCurrent) "MONEY YOU HAVE NOW" else "MONEY AT THE END OF THAT MONTH", style = MaterialTheme.typography.labelSmall, color = p.t2)
+                Text(formatRupees(left), style = MaterialTheme.typography.displaySmall, color = leftColor, fontFamily = FontFamily.Monospace)
+                Text(
+                    if (w != null)
+                        (if (w.fromUser) "You entered ${formatRupees(w.basePaise)} " else "Bank reported ${formatRupees(w.basePaise)} ") + whenDay(w.baseAt) +
+                            (if (w.creditsPaise > 0) " · +${formatRupees(w.creditsPaise)} in" else "") +
+                            (if (w.bankDebitsPaise > 0) " · −${formatRupees(w.bankDebitsPaise)} from your accounts" else "") +
+                            (if (w.cardDebitsPaise > 0) " · −${formatRupees(w.cardDebitsPaise)} on cards" else "")
+                    else "Enter today's bank balance and this runs forward from there",
+                    style = MaterialTheme.typography.bodySmall, color = p.t2
+                )
+                if (w != null) {
+                    Spacer(Modifier.height(10.dp))
+                    SpentBar(w.basePaise + w.creditsPaise, w.debitsPaise)
+                }
+                if (cardDue > 0) {
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        "${state.totalCount} transactions tracked",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        "You owe ${formatRupees(cardDue)} on your cards" +
+                            (if (cardLimit > 0) ", ${formatRupees((cardLimit - cardDue).coerceAtLeast(0))} of limit left" else "") + ".",
+                        style = MaterialTheme.typography.bodySmall, color = if (cardLimit > 0 && cardDue > cardLimit * 8 / 10) p.orange else p.t2,
+                        modifier = Modifier.clickable { onOpen("money:cards") }
                     )
                 }
-                MonthSwitcher(state.month, isCurrentMonth, onShiftMonth)
-            }
-        }
-
-        item { UpdateCard(update, onUpdateDownload, onUpdateInstall, onUpdateDismiss) }
-
-        if (scan != null && !scan.done) item { ScanBanner(scan) }
-
-        item { HeroCard(state) }
-
-        item { AccountsRow(state) }
-
-        item {
-            SectionCard {
-                SectionTitle("Spending by category")
-                if (state.categories.isEmpty()) EmptyHint("No spending recorded for ${formatMonth(state.month)} yet.")
-                else {
-                    ShareBar(state.categories.take(8).map { categoryColor(it.category) to it.share })
-                    Spacer(Modifier.height(14.dp))
-                    state.categories.take(6).forEach { c ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            CategoryDot(c.category, 34)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(c.category, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                                Text("${c.count} payments · ${(c.share * 100).toInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Text(formatRupees(c.paise), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
+                Spacer(Modifier.height(6.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text("See every payment counted", style = MaterialTheme.typography.labelSmall, color = p.gold, modifier = Modifier.clickable { onOpen("wallet") })
+                    Text("Correct the balance", style = MaterialTheme.typography.labelSmall, color = p.gold, modifier = Modifier.clickable { onSetBalance(null) })
                 }
             }
         }
 
-        item {
-            SectionCard {
-                val days = state.daily.size
-                val today = if (isCurrentMonth) dayOfMonth(now) - 1 else -1
-                val avg = if (days > 0) state.expensePaise / (if (isCurrentMonth) dayOfMonth(now) else days).coerceAtLeast(1) else 0
-                SectionTitle("Daily spend", "avg ${formatRupees(avg)}/day")
-                BarChart(
-                    state.daily, today, Teal,
-                    labels = listOf("1", "${days / 4}", "${days / 2}", "${3 * days / 4}", "$days")
-                )
+        // 2. How much do I have
+        plan.netWorth?.let { nw ->
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Tile("BANK", compactRupees(nw.bankPaise), p.teal, Modifier.weight(1f)) { onOpen("money:accounts") }
+                    Tile("INVESTED", compactRupees(nw.holdingsPaise), p.green, Modifier.weight(1f)) { onOpen("money:invest") }
+                    Tile("LOANS", compactRupees(nw.loansPaise + nw.cardsPaise), p.red, Modifier.weight(1f)) { onOpen("money:loans") }
+                }
+                Text("Net worth ${formatRupees(nw.net)}", style = MaterialTheme.typography.labelMedium, color = p.t2, modifier = Modifier.padding(top = 6.dp, start = 2.dp).clickable { onOpen("money:accounts") })
             }
         }
 
-        if (state.recurring.isNotEmpty()) item {
-            SectionCard {
-                SectionTitle("Upcoming & recurring")
-                state.recurring.take(5).forEach { r ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CategoryDot(r.category, 34)
-                        Spacer(Modifier.width(12.dp))
+        // 3. What is coming
+        if (plan.upcoming.isNotEmpty()) item {
+            SectionCard(tint = p.blue) {
+                SectionTitle("Coming up")
+                plan.upcoming.take(6).forEach { u ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(r.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text("Due ${formatDay(r.nextDue)} · seen ${r.occurrences}×", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(u.label, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                formatDay(u.at) + " · " + when (u.type) {
+                                    "emi" -> "EMI"; "card" -> "card bill"; "sip" -> "investment"; "income" -> "expected in"; else -> "bill"
+                                },
+                                style = MaterialTheme.typography.labelSmall, color = p.t2
+                            )
                         }
-                        Text(formatRupees(r.amountPaise), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            (if (u.isIncome) "+" else "−") + formatRupees(u.amountPaise),
+                            style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace,
+                            color = if (u.isIncome) p.green else p.t1
+                        )
                     }
+                }
+                if (dueSoon > 0) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "${formatRupees(dueSoon)} goes out in the next 45 days. You have ${formatRupees(left)}" +
+                            (if (dueSoon > left) ", so ${formatRupees(dueSoon - left)} of it has to come from your next salary." else ", which covers it."),
+                        style = MaterialTheme.typography.bodySmall, color = if (dueSoon > left) p.orange else p.t2
+                    )
+                }
+            }
+        }
+
+        // 4. What needs me
+        if (plan.review.isNotEmpty()) item {
+            SectionCard(tint = p.gold) {
+                SectionTitle("Needs your answer · ${plan.review.size}")
+                plan.review.take(4).forEach { r -> ReviewRow(r, onReview, onSetBalance, onOpen) }
+                if (plan.review.size > 4) Text("${plan.review.size - 4} more after these", style = MaterialTheme.typography.labelSmall, color = p.t3)
+            }
+        }
+
+        state.report?.let { r ->
+            item {
+                SectionCard {
+                    SectionTitle("🧠 Brain", "More") { onOpen("brain") }
+                    Text(r.headline, style = MaterialTheme.typography.bodyMedium)
+                    (r.actions + plan.wealthActions).firstOrNull()?.let { Spacer(Modifier.height(4.dp)); Text("→ $it", style = MaterialTheme.typography.bodySmall, color = p.t2) }
                 }
             }
         }
 
         item {
             SectionCard {
-                SectionTitle("Recent activity", "See all", onSeeAll)
-                if (state.monthTransactions.isEmpty()) EmptyHint("Nothing yet. Bank alerts will appear here automatically.")
+                SectionTitle("Recent", "All activity") { onOpen("spend:activity") }
+                if (state.monthTransactions.isEmpty()) Text("Nothing yet this month.", style = MaterialTheme.typography.bodySmall, color = p.t2)
                 var lastDay = ""
-                state.monthTransactions.take(8).forEach { t ->
+                state.monthTransactions.take(6).forEach { t ->
                     val d = formatDay(t.timestamp)
-                    if (d != lastDay) {
-                        Text(d, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
-                        lastDay = d
-                    }
+                    if (d != lastDay) { Text(d, style = MaterialTheme.typography.labelSmall, color = p.t2, modifier = Modifier.padding(top = 6.dp)); lastDay = d }
                     TransactionRow(t) { onOpenTransaction(t) }
                 }
             }
@@ -174,88 +213,75 @@ fun HomeScreen(
 }
 
 @Composable
-private fun MonthSwitcher(month: Long, isCurrent: Boolean, onShift: (Int) -> Unit) {
-    Row(
-        Modifier.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50)).padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = { onShift(-1) }, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, "Previous month") }
-        Text(formatMonth(month), style = MaterialTheme.typography.labelLarge)
-        IconButton(onClick = { onShift(1) }, enabled = !isCurrent, modifier = Modifier.size(32.dp)) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Next month") }
+private fun Tile(label: String, value: String, color: Color, modifier: Modifier, onClick: () -> Unit) {
+    val p = P
+    Column(modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(12.dp)).border(1.dp, color.copy(alpha = 0.4f), RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = color)
+        Text(value, style = MaterialTheme.typography.titleMedium, color = color, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** "today" / "yesterday" / "on 5 Sep", so the line reads as a sentence. */
+private fun whenDay(ts: Long): String {
+    val d = formatDay(ts)
+    return if (d == "Today" || d == "Yesterday") d.lowercase() else "on $d"
+}
+
+/** One bar: how much of what you had has gone. */
+@Composable
+private fun SpentBar(had: Long, spent: Long) {
+    val p = P
+    val total = had.coerceAtLeast(1).toFloat()
+    val gone = spent.coerceIn(0, had).toFloat() / total
+    Row(Modifier.fillMaxWidth().height(10.dp).background(p.bd, RoundedCornerShape(5.dp))) {
+        if (gone > 0f) Box(Modifier.weight(gone).height(10.dp).background(p.red))
+        if (gone < 1f) Box(Modifier.weight(1f - gone).height(10.dp).background(p.green))
+    }
+    Spacer(Modifier.height(6.dp))
+    Text("Spent ${compactRupees(spent)} of ${compactRupees(had)}", style = MaterialTheme.typography.labelSmall, color = p.t2)
+}
+
+/** One bar: where this month's income went. */
+@Composable
+private fun MonthBar(income: Long, spent: Long, emi: Long, cardDue: Long, invested: Long, bills: Long) {
+    val p = P
+    val total = maxOf(income, spent + emi + cardDue + invested + bills).coerceAtLeast(1).toFloat()
+    val parts = listOf("Spent" to spent, "EMIs" to emi, "Bills" to bills, "Card bills" to cardDue, "Invested" to invested).filter { it.second > 0 }
+    val colors = mapOf("Spent" to p.red, "EMIs" to p.orange, "Bills" to p.purple, "Card bills" to p.blue, "Invested" to p.gold)
+    val used = parts.sumOf { it.second }
+    Row(Modifier.fillMaxWidth().height(10.dp).background(p.bd, RoundedCornerShape(5.dp))) {
+        parts.forEach { (k, v) -> Box(Modifier.fillMaxWidth(0f).weight((v / total).coerceAtLeast(0.001f)).height(10.dp).background(colors[k]!!)) }
+        if (income > used) Box(Modifier.weight(((income - used) / total).coerceAtLeast(0.001f)).height(10.dp).background(p.green.copy(alpha = 0.5f)))
+    }
+    Spacer(Modifier.height(6.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        parts.forEach { (k, v) -> Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(7.dp).background(colors[k]!!, CircleShape)); Spacer(Modifier.width(4.dp)); Text("$k ${compactRupees(v)}", style = MaterialTheme.typography.labelSmall, color = p.t2) } }
+        if (income > used) Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(7.dp).background(p.green.copy(alpha = 0.5f), CircleShape)); Spacer(Modifier.width(4.dp)); Text("Left ${compactRupees(income - used)}", style = MaterialTheme.typography.labelSmall, color = p.t2) }
     }
 }
 
 @Composable
-private fun ScanBanner(scan: ScanProgress) {
-    SectionCard {
-        Text("Reading your SMS history…", style = MaterialTheme.typography.titleSmall)
-        Spacer(Modifier.height(6.dp))
-        Text("${scan.scanned} of ${scan.total} messages · ${scan.found} transactions found", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(10.dp))
-        if (scan.total > 0) LinearProgressIndicator(progress = { scan.scanned.toFloat() / scan.total }, modifier = Modifier.fillMaxWidth())
-        else LinearProgressIndicator(Modifier.fillMaxWidth())
-    }
-}
-
-@Composable
-private fun HeroCard(state: HomeState) {
-    Card(
-        shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.cardColors(containerColor = Teal),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-    ) {
-        Box(Modifier.background(Brush.linearGradient(listOf(Teal, TealDark)))) {
-            Column(Modifier.padding(20.dp)) {
-                Text("Total balance", style = MaterialTheme.typography.labelLarge, color = Mint)
-                Text(
-                    formatRupees(state.totalBalancePaise),
-                    style = MaterialTheme.typography.displaySmall,
-                    color = androidx.compose.ui.graphics.Color.White,
-                )
-                Text(
-                    if (state.accounts.isEmpty()) "Balances appear once a bank alert reports one" else "across ${state.accounts.size} account${if (state.accounts.size > 1) "s" else ""}",
-                    style = MaterialTheme.typography.bodySmall, color = Mint.copy(alpha = 0.85f)
-                )
-                Spacer(Modifier.height(18.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HeroStat("Income", state.incomePaise, Modifier.weight(1f))
-                    HeroStat("Spent", state.expensePaise, Modifier.weight(1f))
-                    HeroStat("Saved", state.savedPaise, Modifier.weight(1f))
-                }
+private fun ReviewRow(r: ReviewItem, onReview: (ReviewItem, String) -> Unit, onSetBalance: (String?) -> Unit, onOpen: (String) -> Unit) {
+    val p = P
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text(r.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        Text(r.detail, style = MaterialTheme.typography.bodySmall, color = p.t2)
+        Row {
+            when (r) {
+                is ReviewItem.BigUnknown -> { Pill("Spend") { onReview(r, "spend") }; Pill("Transfer to me") { onReview(r, "transfer") }; Pill("Investment") { onReview(r, "investment") }; Pill("Not mine") { onReview(r, "spam") } }
+                is ReviewItem.BigCredit -> { Pill("Income") { onReview(r, "income") }; Pill("Salary") { onReview(r, "salary") }; Pill("Transfer to me") { onReview(r, "transfer") }; Pill("Not mine") { onReview(r, "spam") } }
+                is ReviewItem.ConfirmSalary -> { Pill("Yes, salary") { onReview(r, "yes") }; Pill("No") { onReview(r, "dismiss") } }
+                is ReviewItem.NoBalance -> { Pill("Enter balance") { onSetBalance("${r.bank}|${r.tail}") }; Pill("Not my account") { onReview(r, "ignore") }; Pill("Skip") { onReview(r, "dismiss") } }
+                is ReviewItem.NoLimit -> { Pill("Set limit") { onOpen("money:cards") }; Pill("Not my card") { onReview(r, "ignore") }; Pill("Skip") { onReview(r, "dismiss") } }
+                is ReviewItem.NoIncome -> { Pill("Enter income") { onOpen("settings") }; Pill("Skip") { onReview(r, "dismiss") } }
+                is ReviewItem.NoSalaryDay -> { Pill("Set it") { onOpen("settings") }; Pill("It's the 1st") { onReview(r, "dismiss") } }
             }
         }
     }
 }
 
 @Composable
-private fun HeroStat(label: String, paise: Long, modifier: Modifier) {
-    Column(modifier.background(androidx.compose.ui.graphics.Color.White.copy(alpha = 0.10f), RoundedCornerShape(14.dp)).padding(12.dp)) {
-        Text(label, style = MaterialTheme.typography.labelMedium, color = Mint)
-        Text(compactRupees(paise), style = MaterialTheme.typography.titleMedium, color = androidx.compose.ui.graphics.Color.White, maxLines = 1)
-    }
-}
-
-@Composable
-private fun AccountsRow(state: HomeState) {
-    if (state.accounts.isEmpty()) return
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(state.accounts) { a ->
-            Card(
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-            ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) {
-                        Icon(if (a.kind == "CARD") Icons.Default.CreditCard else Icons.Default.AccountBalance, null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(18.dp))
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text("${a.bank} ··${a.accountTail}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(a.balancePaise?.let { formatRupees(it) } ?: "—", style = MaterialTheme.typography.titleMedium)
-                    }
-                }
-            }
-        }
-    }
+private fun Pill(label: String, onClick: () -> Unit) {
+    val p = P
+    TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)) { Text(label, style = MaterialTheme.typography.labelMedium, color = p.gold) }
 }
