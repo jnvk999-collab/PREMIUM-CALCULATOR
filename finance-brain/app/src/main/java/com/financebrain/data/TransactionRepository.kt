@@ -255,6 +255,15 @@ class TransactionRepository(
 
     suspend fun detectInternalTransfers(): Int {
         val all = db.transactions().allNow().filter { !it.userEdited && it.source != Source.MANUAL }
+        // A leg flagged as a transfer whose partner is no longer flagged is a payment after all.
+        val flagged = all.filter { it.isTransfer }
+        val orphans = flagged.filter { a ->
+            flagged.none { b ->
+                b.id != a.id && b.direction != a.direction && b.amountPaise == a.amountPaise &&
+                    kotlin.math.abs(b.timestamp - a.timestamp) <= 26 * 3_600_000L
+            }
+        }
+        if (orphans.isNotEmpty()) db.transactions().updateAll(orphans.map { it.copy(isTransfer = false, category = Categorizer.categorize(it.counterparty, it.channel, it.direction, it.rawText)) })
         val debits = all.filter { it.direction == Direction.DEBIT && !it.isTransfer }
         val credits = all.filter { it.direction == Direction.CREDIT && !it.isTransfer }.groupBy { it.amountPaise }
         val usedCredits = HashSet<Long>()

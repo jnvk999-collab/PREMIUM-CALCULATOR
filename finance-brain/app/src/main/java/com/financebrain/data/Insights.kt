@@ -71,12 +71,13 @@ object Insights {
         t.source != Source.MANUAL && t.accountKind != "CARD" && t.bank !in com.financebrain.parser.BankSmsParser.investmentPlatforms
 
     /**
-     * Movements that change the money you hold. Card spends are not here: they raise what you owe on
-     * the card, and only leave your bank when the bill is paid. Money moved between your own accounts
-     * is not a movement at all.
+     * Everything that changes the money you have: bank payments, card swipes, cash you record by
+     * hand, and every credit. A swipe is money gone the moment you pay, so paying the card bill
+     * later is not counted again. A move between your own accounts has a debit and a credit that
+     * cancel, so it needs no special case.
      */
     private fun movesYourMoney(t: Transaction) =
-        !t.isTransfer && (t.source == Source.MANUAL || movesBankMoney(t))
+        t.category != Categories.CARD_BILL && t.bank !in com.financebrain.parser.BankSmsParser.investmentPlatforms
 
     private fun netFlow(rows: List<Transaction>, from: Long, to: Long, inclusive: Boolean = false): Long =
         rows.filter { (if (inclusive) it.timestamp >= from else it.timestamp > from) && it.timestamp <= to && movesBankMoney(it) }
