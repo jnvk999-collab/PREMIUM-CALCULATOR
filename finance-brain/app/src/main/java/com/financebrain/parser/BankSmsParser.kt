@@ -54,8 +54,13 @@ object BankSmsParser {
         RegexOption.IGNORE_CASE
     )
 
+    /**
+     * Account tail. Banks always mask: "A/c XX1730", "A/cX4321", "a/c **7788", "Acct XX123",
+     * "A/c ending 1730", "A/c no. XXXXXX1730". A bare number after "account" is a reference,
+     * not an account, so masking or the word "ending" is required.
+     */
     private val tailRe = Regex(
-        """(?:a/?c(?:ct|count)?|acct|card|account)\s*(?:no\.?\s*)?(?:ending\s*)?[:\s]*(?:[xX*]+|XX|\*)?[xX*]*(\d{3,6})\b""",
+        """(?:a/?c(?:ct|count)?|acct|account)\s*(?:no\.?\s*)?(?:(?:ending|linked)(?:\s+(?:with|in|to))?\s*[:\-]?\s*(\d{3,6})\b|[:\s]*(?:[xX*]{1,}|XX)\s*(\d{3,6})\b)""",
         RegexOption.IGNORE_CASE
     )
     private val balanceRe = Regex(
@@ -104,24 +109,99 @@ object BankSmsParser {
             s.contains("FEDBNK") || s.contains("FEDERAL") || b.contains("FEDERAL BANK") ||
                 b.contains("-FEDERAL") || b.contains("FEDBNK") -> "Federal Bank"
             s.contains("PHONPE") || s.contains("PHONEPE") || b.contains("PHONEPE") -> "PhonePe"
+            s.contains("GROWW") || b.contains("GROWW") -> "Groww"
+            s.contains("ZERODH") || b.contains("ZERODHA") || b.contains("COIN BY ZERODHA") -> "Zerodha"
+            s.contains("UPSTOX") || b.contains("UPSTOX") -> "Upstox"
+            s.contains("KUVERA") || b.contains("KUVERA") -> "Kuvera"
+            s.contains("ETMONY") || b.contains("ETMONEY") -> "ETMoney"
+            s.contains("INDMNY") || b.contains("INDMONEY") -> "INDmoney"
+            b.contains("BSE STAR") || b.contains("BSESTAR") || b.contains("BSE LTD") || b.contains("BSE LIMITED") -> "BSE StAR MF"
+            b.contains("NSE CLEARING") || b.contains("NSCCL") -> "NSE Clearing"
+            b.contains("INDIAN CLEARING") || b.contains("ICCL") -> "ICCL"
+            s.contains("ANDHRA") || s.contains("ANDBNK") || b.contains("ANDHRA BANK") -> "Andhra Bank"
+            s.contains("UNION") || s.contains("UBOI") || b.contains("UNION BANK") || b.contains("-UNION") -> "Union Bank"
             s.contains("AXIS") || b.contains("AXIS BANK") -> "Axis Bank"
             s.contains("KOTAK") || b.contains("KOTAK") -> "Kotak"
             s.contains("PAYTM") || b.contains("PAYTM") -> "Paytm"
+            s.contains("BOBTXN") || s.contains("BOBSMS") || b.contains("BANK OF BARODA") || b.contains("-BOB") -> "Bank of Baroda"
+            s.contains("PNBSMS") || b.contains("PUNJAB NATIONAL") || b.contains("-PNB") -> "PNB"
+            s.contains("CANBNK") || b.contains("CANARA BANK") || b.contains("-CANARA") -> "Canara Bank"
+            s.contains("IDFCFB") || b.contains("IDFC FIRST") -> "IDFC First"
+            s.contains("INDUSB") || b.contains("INDUSIND") -> "IndusInd"
+            s.contains("YESBNK") || b.contains("YES BANK") -> "Yes Bank"
+            s.contains("AUBANK") || b.contains("AU SMALL") || b.contains("AU BANK") -> "AU Bank"
+            s.contains("BOIIND") || b.contains("BANK OF INDIA") -> "Bank of India"
+            s.contains("IOBCHN") || b.contains("INDIAN OVERSEAS") -> "IOB"
+            s.contains("INDBNK") || b.contains("INDIAN BANK") -> "Indian Bank"
+            s.contains("CBSSBI") || b.contains("CENTRAL BANK") -> "Central Bank"
+            s.contains("RBLBNK") || b.contains("RBL BANK") -> "RBL Bank"
+            s.contains("BNDHAN") || b.contains("BANDHAN") -> "Bandhan Bank"
+            s.contains("HSBCIN") || b.contains("HSBC") -> "HSBC"
+            s.contains("SCBANK") || b.contains("STANDARD CHARTERED") -> "Standard Chartered"
+            s.contains("CITIBK") || b.contains("CITIBANK") -> "Citi"
+            s.contains("AMEX") || b.contains("AMERICAN EXPRESS") -> "Amex"
+            s.contains("GPAY") || b.contains("GOOGLE PAY") -> "Google Pay"
+            s.contains("AMZNPY") || b.contains("AMAZON PAY") -> "Amazon Pay"
             else -> null
         }
+    }
+
+    val investmentPlatforms = setOf("Groww", "Zerodha", "Upstox", "Kuvera", "ETMoney", "INDmoney", "BSE StAR MF", "NSE Clearing", "ICCL")
+
+    private val platformInvestRe = Regex(
+        """(?:sip|order|investment|purchase|lumpsum|lump sum|buy order|mandate)\b.{0,80}?(?:of|for|worth|amount)?\s*(?:INR|Rs\.?|₹)\s*([0-9][0-9,]*(?:\.\d{1,2})?)""",
+        RegexOption.IGNORE_CASE
+    )
+    private val platformAmountFirstRe = Regex(
+        """(?:INR|Rs\.?|₹)\s*([0-9][0-9,]*(?:\.\d{1,2})?).{0,60}?\b(?:invested|sip|order|units|processed|executed|placed|successful|debited|deducted)\b""",
+        RegexOption.IGNORE_CASE
+    )
+    private val fundRe = Regex(
+        """\b(?:in|for|of)\s+([A-Z][A-Za-z0-9&.' -]{3,60}(?:Fund|Cap|Index|ETF|Gold|Liquid|Bond|Equity|Debt|Hybrid|Flexi|Bluechip|Nifty|Sensex|Growth|Direct|Plan|Scheme|Deposit|FD))\b"""
+    )
+    private val platformRedeemRe = Regex("""\b(redeem|redemption|withdraw(?:al|n)?|sold|sell order|credited to your bank|payout)\b""", RegexOption.IGNORE_CASE)
+    private val platformIgnoreRe = Regex("""\b(otp|reminder|upcoming|failed|rejected|cancell?ed|kyc|nominee|offer|refer|login|password|verify|market update|nav update|portfolio update|weekly|newsletter|is due|are due)\b""", RegexOption.IGNORE_CASE)
+    /** A confirmation says something already happened. */
+    private val platformDoneRe = Regex("""\b(processed|successful(?:ly)?|executed|completed|invested|allotted|placed|confirmed|debited|deducted|received|credited)\b""", RegexOption.IGNORE_CASE)
+
+    /** Confirmations from investment apps: SIP processed, order executed, lumpsum invested. */
+    private fun parsePlatform(platform: String, text: String, receivedAt: Long): ParsedTransaction? {
+        if (platformIgnoreRe.containsMatchIn(text)) return null
+        if (!platformDoneRe.containsMatchIn(text)) return null
+        val amountRaw = platformInvestRe.find(text)?.groupValues?.get(1) ?: platformAmountFirstRe.find(text)?.groupValues?.get(1) ?: return null
+        val amount = toPaise(amountRaw) ?: return null
+        if (amount <= 0) return null
+        val redemption = platformRedeemRe.containsMatchIn(text)
+        val fund = fundRe.find(text)?.groupValues?.get(1)?.trim()
+        val counterparty = if (fund != null) "$platform · $fund" else platform
+        val ref = refRe.find(text)?.groupValues?.get(1)?.takeIf { it.length in 6..24 }
+        return ParsedTransaction(
+            amountPaise = amount,
+            direction = if (redemption) Direction.CREDIT else Direction.DEBIT,
+            bank = platform,
+            accountTail = null,
+            counterparty = counterparty,
+            channel = "INVEST",
+            reference = ref,
+            balancePaise = null,
+            timestamp = resolveTime(text, receivedAt),
+            accountKind = "INVEST",
+        )
     }
 
     fun parse(sender: String?, body: String, receivedAt: Long): ParsedTransaction? {
         val text = body.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
         if (isPromotionalSender(sender)) return null
         val bank = identifyBank(sender, text) ?: return null
+        if (bank in investmentPlatforms) return parsePlatform(bank, text, receivedAt)
         if (ignoreRe.containsMatchIn(text)) return null
 
         val direction = detectDirection(text) ?: return null
         val amount = extractAmount(text) ?: return null
         if (amount <= 0) return null
 
-        val tail = tailRe.find(text)?.groupValues?.get(1)?.takeLast(4)
+        val cardTail = Regex("""\bcard\s*(?:no\.?\s*)?(?:(?:ending|linked)(?:\s+(?:with|in|to))?\s*[:\-]?\s*(\d{2,6})\b|[:\s]*(?:[xX*]{1,}|XX)\s*(\d{2,6})\b)""", RegexOption.IGNORE_CASE).find(text)?.let { m -> (m.groupValues[1].ifEmpty { m.groupValues[2] }).takeLast(4) }
+        val tail = cardTail ?: tailRe.find(text)?.let { m -> (m.groupValues[1].ifEmpty { m.groupValues[2] }).takeLast(4) }
         val balance = balanceRe.find(text)?.groupValues?.get(1)?.let(::toPaise)
         val reference = refRe.find(text)?.groupValues?.get(1)?.takeIf { it.length in 6..24 }
 
@@ -133,10 +213,11 @@ object BankSmsParser {
         if (promoHits >= 2 || (promoHits >= 1 && urlRe.containsMatchIn(text))) return null
         if (urlRe.containsMatchIn(text) && reference == null && balance == null) return null
         val channel = detectChannel(text)
-        val isCard = Regex("""\bcard\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) &&
-            !Regex("""\b(a/?c|account)\b""", RegexOption.IGNORE_CASE).containsMatchIn(text)
+        // Credit cards, including RuPay credit cards used over UPI ("from HDFC Bank Credit Card XX46 via UPI").
+        val isCard = Regex("""\bcredit\s*card\b|\brupay\s*credit\b|\bcard\s*(?:ending|no\.?|xx|x\d)""", RegexOption.IGNORE_CASE).containsMatchIn(text) ||
+            (Regex("""\bcard\b""", RegexOption.IGNORE_CASE).containsMatchIn(text) && !Regex("""\b(a/?c|account)\b""", RegexOption.IGNORE_CASE).containsMatchIn(text))
         val counterparty = extractCounterparty(text, channel) ?: defaultCounterparty(channel, bank)
-        val timestamp = extractDate(text) ?: receivedAt
+        val timestamp = resolveTime(text, receivedAt)
 
         return ParsedTransaction(
             amountPaise = amount,
@@ -217,6 +298,20 @@ object BankSmsParser {
         s = s.replace(Regex("""^(?:VPA|UPI)\s+""", RegexOption.IGNORE_CASE), "")
         s = s.replace(Regex("""\s+(?:on|ref|via)$""", RegexOption.IGNORE_CASE), "")
         return s.trim()
+    }
+
+    /**
+     * Alerts carry a date but no clock time, so the date alone would stamp every payment at
+     * midnight. When the body's date is the day the message arrived, the arrival time is the
+     * truthful stamp; only an alert about another day falls back to the date in the text.
+     */
+    private fun resolveTime(text: String, receivedAt: Long): Long {
+        val d = extractDate(text) ?: return receivedAt
+        val a = java.util.Calendar.getInstance().apply { timeInMillis = d }
+        val b = java.util.Calendar.getInstance().apply { timeInMillis = receivedAt }
+        val sameDay = a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) &&
+            a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR)
+        return if (sameDay) receivedAt else d
     }
 
     private fun extractDate(text: String): Long? {

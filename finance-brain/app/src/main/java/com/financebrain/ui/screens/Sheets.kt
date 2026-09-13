@@ -178,3 +178,70 @@ fun AddTransactionSheet(
         }
     }
 }
+
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun SetBalanceSheet(
+    accounts: List<com.financebrain.data.Account>,
+    accountViews: List<com.financebrain.ui.AccountView> = emptyList(),
+    anchors: List<com.financebrain.data.BalanceAnchor>,
+    onDismiss: () -> Unit,
+    onSave: (key: String, amountPaise: Long, includesToday: Boolean) -> Unit,
+    onClear: (key: String) -> Unit,
+    initialTarget: String? = null,
+) {
+    val sheet = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var target by remember { mutableStateOf(initialTarget ?: "ALL") }
+    var amount by remember { mutableStateOf("") }
+    var includesToday by remember { mutableStateOf(false) }
+    val paise = BankSmsParser.toPaise(amount) ?: 0L
+    val existing = anchors.firstOrNull { it.key == target }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet) {
+        Column(Modifier.padding(horizontal = 20.dp).verticalScroll(rememberScrollState()).navigationBarsPadding()) {
+            Text("Update balance", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Enter the balance and the app keeps it running from there: every credit adds, every payment subtracts.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(14.dp))
+            Text("Which balance", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(6.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = target == "ALL", onClick = { target = "ALL" }, label = { Text("All accounts combined") })
+                val options = (accountViews.filter { !it.isCard }.map { it.bank to it.tail } + accounts.map { it.bank to it.accountTail }).distinct()
+                options.forEach { (bank, tail) ->
+                    val k = "$bank|$tail"
+                    FilterChip(selected = target == k, onClick = { target = k }, label = { Text("$bank ··$tail") })
+                }
+            }
+            if (existing != null) {
+                Spacer(Modifier.height(6.dp))
+                Text("Currently set to ${formatRupees(existing.amountPaise)} on ${formatDay(existing.at)}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = amount, onValueChange = { v -> if (v.matches(Regex("""\d{0,10}(\.\d{0,2})?"""))) amount = v },
+                label = { Text("Balance today (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                singleLine = true, modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (includesToday) "Balance as of right now" else "Balance at the start of today", style = MaterialTheme.typography.bodyMedium)
+                    Text(if (includesToday) "Today's payments are already taken out of this figure." else "Today's payments so far will be subtracted from this figure.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                androidx.compose.material3.Switch(checked = includesToday, onCheckedChange = { includesToday = it })
+            }
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = { onSave(target, paise, includesToday) }, enabled = paise >= 0 && amount.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                Text(if (amount.isNotBlank()) "Start from ${formatRupees(paise)}" else "Save")
+            }
+            if (existing != null) TextButton(onClick = { onClear(target) }) { Text("Remove this balance and go back to bank-reported figures") }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}

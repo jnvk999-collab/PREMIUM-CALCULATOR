@@ -32,22 +32,37 @@ jobs:
         id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.FINANCE_BRAIN_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.FINANCE_BRAIN_KEYSTORE_PASSWORD }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/finance-brain.jks"
-            echo "available=true" >> "$GITHUB_OUTPUT"
-            SHA1=$(keytool -list -v -keystore "$RUNNER_TEMP/finance-brain.jks" -alias financebrain -storepass "${{ secrets.FINANCE_BRAIN_KEYSTORE_PASSWORD }}" | grep -E "SHA1:" | head -1 | sed 's/.*SHA1: //')
-            echo "### Signing key SHA-1 (for the Google OAuth Android client)" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"; echo "$SHA1" >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
-          else
+          if [ -z "$KEYSTORE_BASE64" ]; then
             echo "::warning::FINANCE_BRAIN_KEYSTORE_BASE64 secret is not set. Run the 'Finance Brain · generate signing key' workflow once and add the secrets. No release will be published."
-            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "available=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
+          # Tolerate stray spaces or line breaks from copy-paste.
+          if ! echo "$KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/finance-brain.jks" 2>/dev/null; then
+            echo "::error::FINANCE_BRAIN_KEYSTORE_BASE64 is not valid. Paste the full contents of keystore-base64.txt (one long line), not the .jks file."
+            exit 1
+          fi
+          PW="$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d '[:space:]')"
+          if [ -z "$PW" ]; then
+            echo "::error::FINANCE_BRAIN_KEYSTORE_PASSWORD secret is empty."; exit 1
+          fi
+          if ! keytool -list -keystore "$RUNNER_TEMP/finance-brain.jks" -alias financebrain -storepass "$PW" >/dev/null 2>&1; then
+            echo "::error::FINANCE_BRAIN_KEYSTORE_PASSWORD does not open the keystore. Open the 'generate signing key' run summary and copy the password shown under FINANCE_BRAIN_KEYSTORE_PASSWORD (not the SHA-1), then update the secret."
+            exit 1
+          fi
+          echo "::add-mask::$PW"
+          echo "KEYSTORE_PASSWORD_CLEAN=$PW" >> "$GITHUB_ENV"
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          SHA1=$(keytool -list -v -keystore "$RUNNER_TEMP/finance-brain.jks" -alias financebrain -storepass "$PW" | grep -E "SHA1:" | head -1 | sed 's/.*SHA1: //')
+          echo "### Signing key SHA-1 (for the Google OAuth Android client)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; echo "$SHA1" >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build signed release APK
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/finance-brain.jks
-          KEYSTORE_PASSWORD: ${{ secrets.FINANCE_BRAIN_KEYSTORE_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD_CLEAN }}
+          GMAIL_CLIENT_ID: ${{ secrets.FINANCE_BRAIN_GMAIL_CLIENT_ID }}
         run: |
           ./gradlew assembleRelease --no-daemon
           cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/finance-brain.apk"
