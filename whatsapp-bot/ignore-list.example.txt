@@ -1,0 +1,11 @@
+# Groups and numbers the bot should completely ignore.
+# Copy this file to  ignore-list.txt  and edit. Changes apply immediately (no restart).
+#
+# One per line: a group name (exactly as in WhatsApp, capitals don't matter)
+# or a phone number (country code + number, digits only).
+# Lines starting with # are notes.
+#
+# Examples:
+# Relative group
+# TINY THINKERS 2026-27
+# 919876543210
