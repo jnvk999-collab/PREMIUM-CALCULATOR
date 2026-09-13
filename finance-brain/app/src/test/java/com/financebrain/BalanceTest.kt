@@ -119,6 +119,14 @@ class BalanceTest {
         assertEquals(16_000_00L, w.paise)
     }
 
+    @Test fun cashYouRecordByHandComesOffTheBalance() {
+        val anchor = BalanceAnchor("ALL", 20_000_00, now - day)
+        val rows = listOf(tx(2_100_00, Direction.DEBIT, now - 3_600_000L, tail = "", bank = "Cash").copy(source = Source.MANUAL, channel = "CASH"))
+        val w = Insights.wallet(rows, listOf(anchor), now + 1)!!
+        assertEquals(2_100_00L, w.debitsPaise)
+        assertEquals(17_900_00L, w.paise)
+    }
+
     @Test fun theWorkingIsAvailableForOneAccount() {
         val rows = listOf(
             tx(1_000_00, Direction.DEBIT, now - 2 * day, balance = 20_000_00),

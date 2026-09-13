@@ -75,7 +75,8 @@ object Insights {
      * the card, and only leave your bank when the bill is paid. Money moved between your own accounts
      * is not a movement at all.
      */
-    private fun movesYourMoney(t: Transaction) = movesBankMoney(t) && !t.isTransfer
+    private fun movesYourMoney(t: Transaction) =
+        !t.isTransfer && (t.source == Source.MANUAL || movesBankMoney(t))
 
     private fun netFlow(rows: List<Transaction>, from: Long, to: Long, inclusive: Boolean = false): Long =
         rows.filter { (if (inclusive) it.timestamp >= from else it.timestamp > from) && it.timestamp <= to && movesBankMoney(it) }

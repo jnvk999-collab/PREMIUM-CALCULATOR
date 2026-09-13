@@ -84,6 +84,19 @@ class FinanceBrainApp : Application() {
                 )
                 prefs.edit().putBoolean("stated_balances_v1", true).apply()
             }
+            if (!prefs.getBoolean("stated_balances_v2", false)) {
+                // The figures given were the credit still available, not the debt: owed = limit − available.
+                repository.statedBalances(
+                    accounts = emptyList(),
+                    cards = listOf(
+                        TransactionRepository.CardFigure("Federal Bank", "2338", "Federal RuPay", 3_00_000_00L - 2_70_547_00L, 3_00_000_00L),
+                        TransactionRepository.CardFigure("HDFC", "9646", "HDFC RuPay", 50_000_00L - 32_830_00L, 50_000_00L),
+                        TransactionRepository.CardFigure("ICICI", "6602", "ICICI RuPay", 4_55_000_00L - 4_32_724_00L, 4_55_000_00L),
+                    ),
+                    at = System.currentTimeMillis(),
+                )
+                prefs.edit().putBoolean("stated_balances_v2", true).apply()
+            }
             repository.syncCardsFromTransactions()
             repository.detectInternalTransfers()
         }

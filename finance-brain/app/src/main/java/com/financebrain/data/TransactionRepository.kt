@@ -65,7 +65,7 @@ class TransactionRepository(
             }
             val card = match?.copy(
                 tail = c.tail, limitPaise = c.limitPaise,
-                statedOutstandingPaise = c.outstandingPaise, statedAt = at,
+                statedOutstandingPaise = c.outstandingPaise, statedAt = if (match.statedAt > 0) match.statedAt else at,
             ) ?: CreditCard(
                 key = "${c.bank}|${c.tail}", name = c.name, bank = c.bank, tail = c.tail,
                 limitPaise = c.limitPaise, billingDay = c.billingDay,
