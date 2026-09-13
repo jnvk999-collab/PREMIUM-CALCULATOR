@@ -71,13 +71,11 @@ object Insights {
         t.source != Source.MANUAL && t.accountKind != "CARD" && t.bank !in com.financebrain.parser.BankSmsParser.investmentPlatforms
 
     /**
-     * Movements that change what you actually have. A card spend is money gone even though it leaves
-     * the bank later, so it counts here; paying the card bill afterwards would count it twice, so it
-     * does not. Money moved between your own accounts is not a movement at all.
+     * Movements that change the money you hold. Card spends are not here: they raise what you owe on
+     * the card, and only leave your bank when the bill is paid. Money moved between your own accounts
+     * is not a movement at all.
      */
-    private fun movesYourMoney(t: Transaction) =
-        t.source != Source.MANUAL && !t.isTransfer && t.category != Categories.CARD_BILL &&
-            t.bank !in com.financebrain.parser.BankSmsParser.investmentPlatforms
+    private fun movesYourMoney(t: Transaction) = movesBankMoney(t) && !t.isTransfer
 
     private fun netFlow(rows: List<Transaction>, from: Long, to: Long, inclusive: Boolean = false): Long =
         rows.filter { (if (inclusive) it.timestamp >= from else it.timestamp > from) && it.timestamp <= to && movesBankMoney(it) }

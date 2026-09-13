@@ -47,6 +47,40 @@ class TransactionRepository(
     suspend fun saveLoan(l: Loan) = db.loans().upsert(l)
     suspend fun deleteLoan(id: Long) = db.loans().delete(id)
 
+    /**
+     * Figures the owner read off their bank and card apps. Matched to whatever the parser already
+     * created for the same bank (tails can be stored short, e.g. ··02 for a card ending 6602), so a
+     * stated balance corrects an existing card rather than adding a duplicate.
+     */
+    suspend fun statedBalances(
+        accounts: List<Triple<String, String, Long>>,          // bank, tail, balance now
+        cards: List<CardFigure>,
+        at: Long,
+    ) {
+        for ((bank, tail, paise) in accounts) setBalance("$bank|$tail", paise, at)
+        val existing = db.cards().list()
+        for (c in cards) {
+            val match = existing.firstOrNull {
+                it.bank.equals(c.bank, true) && (it.tail == c.tail || c.tail.endsWith(it.tail) || it.tail.endsWith(c.tail))
+            }
+            val card = match?.copy(
+                tail = c.tail, limitPaise = c.limitPaise,
+                statedOutstandingPaise = c.outstandingPaise, statedAt = at,
+            ) ?: CreditCard(
+                key = "${c.bank}|${c.tail}", name = c.name, bank = c.bank, tail = c.tail,
+                limitPaise = c.limitPaise, billingDay = c.billingDay,
+                statedOutstandingPaise = c.outstandingPaise, statedAt = at,
+            )
+            if (match != null && match.key != "${c.bank}|${c.tail}") db.cards().delete(match.key)
+            db.cards().upsert(card.copy(key = "${c.bank}|${c.tail}"))
+        }
+    }
+
+    data class CardFigure(
+        val bank: String, val tail: String, val name: String,
+        val outstandingPaise: Long, val limitPaise: Long, val billingDay: Int = 21,
+    )
+
     /** One-time seed of the owner's known holdings and loan, entered from their broker screens. */
     suspend fun seedOwnerPortfolio() {
         if (db.holdings().count() > 0 || db.loans().count() > 0) return

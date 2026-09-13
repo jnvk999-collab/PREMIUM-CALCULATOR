@@ -41,6 +41,13 @@ val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
     }
 }
 
+val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `credit_cards` ADD COLUMN `statedOutstandingPaise` INTEGER")
+        db.execSQL("ALTER TABLE `credit_cards` ADD COLUMN `statedAt` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 class Converters {
     @TypeConverter fun dirToString(d: Direction) = d.name
     @TypeConverter fun stringToDir(s: String) = Direction.valueOf(s)
@@ -252,7 +259,7 @@ interface ProcessedSmsDao {
     entities = [Transaction::class, Account::class, MerchantRule::class, ProcessedSms::class, ProcessedEmail::class, BalanceAnchor::class,
         CreditCard::class, Goal::class, Receivable::class, InformalLoan::class, ControlledCategory::class, ZeroTolerance::class, DisciplineEntry::class,
         Holding::class, Loan::class],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -275,7 +282,7 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile private var instance: AppDatabase? = null
         fun get(context: Context): AppDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "finance_brain.db")
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .fallbackToDestructiveMigrationFrom(1)
                 .build().also { instance = it }
         }

@@ -72,6 +72,18 @@ class FinanceBrainApp : Application() {
             if (!prefs.getBoolean("reparsed_tails_v2", false)) { repository.reparseAccountTails(); prefs.edit().putBoolean("reparsed_tails_v2", true).apply() }
             if (!prefs.getBoolean("anchors_day_v1", false)) { repository.moveAnchorsToDayStart(); prefs.edit().putBoolean("anchors_day_v1", true).apply() }
             if (!prefs.getBoolean("retransfer_v3", false)) { repository.clearAutoTransfers(); prefs.edit().putBoolean("retransfer_v3", true).apply() }
+            if (!prefs.getBoolean("stated_balances_v1", false)) {
+                repository.statedBalances(
+                    accounts = listOf(Triple("SBI", "1730", 16_700_00L)),
+                    cards = listOf(
+                        TransactionRepository.CardFigure("Federal Bank", "2338", "Federal RuPay", 2_70_547_00L, 3_00_000_00L),
+                        TransactionRepository.CardFigure("HDFC", "9646", "HDFC RuPay", 32_830_00L, 50_000_00L),
+                        TransactionRepository.CardFigure("ICICI", "6602", "ICICI RuPay", 4_32_724_00L, 4_55_000_00L),
+                    ),
+                    at = System.currentTimeMillis(),
+                )
+                prefs.edit().putBoolean("stated_balances_v1", true).apply()
+            }
             repository.syncCardsFromTransactions()
             repository.detectInternalTransfers()
         }

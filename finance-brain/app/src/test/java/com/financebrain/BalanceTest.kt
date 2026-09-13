@@ -86,15 +86,15 @@ class BalanceTest {
         assertNull(Insights.balanceAt(listOf(tx(100_00, Direction.DEBIT, now - day)), emptyList(), now + 1))
     }
 
-    @Test fun aCardSpendIsMoneyGoneButPayingTheBillIsNotCountedTwice() {
+    @Test fun aCardSwipeIsDebtNotBankMoney_butPayingTheBillLeavesTheBank() {
         val anchor = BalanceAnchor("ALL", 20_000_00, now - day)
         val rows = listOf(
             tx(3_550_00, Direction.DEBIT, now - 3 * 3_600_000L, tail = "2338", bank = "Federal Bank", kind = "CARD"),
             tx(1_000_00, Direction.DEBIT, now - 2 * 3_600_000L).copy(category = Categories.CARD_BILL),
         )
         val w = Insights.wallet(rows, listOf(anchor), now + 1)!!
-        assertEquals(3_550_00L, w.debitsPaise)
-        assertEquals(16_450_00L, w.paise)
+        assertEquals(1_000_00L, w.debitsPaise)
+        assertEquals(19_000_00L, w.paise)
     }
 
     @Test fun moneyMovedBetweenYourOwnAccountsIsNotSpending() {

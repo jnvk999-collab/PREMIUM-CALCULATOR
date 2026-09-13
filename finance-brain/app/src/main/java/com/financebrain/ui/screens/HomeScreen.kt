@@ -72,6 +72,8 @@ fun HomeScreen(
     // What you have is the plain sum: what you started with, plus what came in, less what went out.
     val left = w?.paise ?: (income - state.expensePaise - state.investedPaise)
     val dueSoon = plan.upcoming.filter { !it.isIncome }.sumOf { it.amountPaise }
+    val cardDue = plan.cards.sumOf { it.outstandingPaise + it.currentSpendPaise }
+    val cardLimit = plan.cards.sumOf { it.card.limitPaise ?: 0L }
     val leftColor = if (left < 0) p.red else if (dueSoon > left) p.orange else p.green
 
     LazyColumn(
@@ -113,6 +115,15 @@ fun HomeScreen(
                 if (w != null) {
                     Spacer(Modifier.height(10.dp))
                     SpentBar(w.basePaise + w.creditsPaise, w.debitsPaise)
+                }
+                if (cardDue > 0) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "You owe ${formatRupees(cardDue)} on your cards" +
+                            (if (cardLimit > 0) ", ${formatRupees((cardLimit - cardDue).coerceAtLeast(0))} of limit left" else "") + ".",
+                        style = MaterialTheme.typography.bodySmall, color = if (cardLimit > 0 && cardDue > cardLimit * 8 / 10) p.orange else p.t2,
+                        modifier = Modifier.clickable { onOpen("money:cards") }
+                    )
                 }
                 Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {

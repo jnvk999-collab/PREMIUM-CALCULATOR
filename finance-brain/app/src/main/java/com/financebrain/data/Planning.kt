@@ -124,6 +124,17 @@ object Planning {
                 (it.counterparty.contains(card.tail) || it.counterparty.contains(card.bank, true) || (it.rawText?.contains(card.tail) == true))
         }.sumOf { it.amountPaise }
         val due = start + card.dueDaysAfter * 86_400_000L
+        val stated = card.statedOutstandingPaise
+        if (stated != null) {
+            // You told the app what you owe. Run it forward: swipes add, payments subtract.
+            val since = spends.filter { it.timestamp > card.statedAt }.sumOf { it.amountPaise } -
+                refunds.filter { it.timestamp > card.statedAt }.sumOf { it.amountPaise }
+            val paidSince = all.filter {
+                it.category == Categories.CARD_BILL && it.timestamp > card.statedAt &&
+                    (it.counterparty.contains(card.tail) || it.counterparty.contains(card.bank, true) || (it.rawText?.contains(card.tail) == true))
+            }.sumOf { it.amountPaise }
+            return CardStatus(card, start, end, 0, (stated + since - paidSince).coerceAtLeast(0), 0, end, due)
+        }
         return CardStatus(card, start, end, current, last, paid, end, due)
     }
 

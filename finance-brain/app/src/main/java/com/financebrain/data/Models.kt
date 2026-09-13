@@ -128,6 +128,9 @@ data class CreditCard(
     val billingDay: Int,        // statement generation day (1-28)
     val dueDaysAfter: Int = 20, // payment due this many days after billing
     val color: Int = 0,
+    /** What you say is outstanding right now. Spends after [statedAt] are added, payments subtracted. */
+    val statedOutstandingPaise: Long? = null,
+    val statedAt: Long = 0,
 )
 
 @Entity(tableName = "goals")
