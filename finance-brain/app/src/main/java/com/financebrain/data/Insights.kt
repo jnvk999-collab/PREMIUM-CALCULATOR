@@ -17,6 +17,27 @@ data class LoanInfo(val lender: String, val emiPaise: Long, val nextDue: Long, v
 
 data class InvestmentLine(val name: String, val platform: String, val investedPaise: Long, val redeemedPaise: Long, val count: Int, val lastAt: Long, val monthly: Boolean)
 
+data class DayTotal(val dayStart: Long, val paise: Long, val count: Int = 0)
+data class CategoryDelta(val category: String, val paise: Long, val usualPaise: Long, val count: Int) {
+    val deltaPaise get() = paise - usualPaise
+}
+
+/** Today, this week, and where the money is going faster than usual, with plain verdicts. */
+data class DailyReport(
+    val todayPaise: Long, val todayCount: Int, val todayByCategory: List<CategoryTotal>, val todayTop: Transaction?,
+    val weekPaise: Long, val weekStart: Long, val daysLeftInWeek: Int,
+    val last14: List<DayTotal>,
+    val avgPerDayPaise: Long, val daysSoFar: Int,
+    val weekdayAvgPaise: Long, val weekendAvgPaise: Long,
+    val biggestDays: List<DayTotal>,
+    val categoryDelta: List<CategoryDelta>,
+    val lines: List<String>,
+    val dailyLimitPaise: Long, val weeklyLimitPaise: Long,
+) {
+    val dailyLeftPaise get() = dailyLimitPaise - todayPaise
+    val weeklyLeftPaise get() = weeklyLimitPaise - weekPaise
+}
+
 data class MonthBalance(val startPaise: Long?, val endPaise: Long?, val nowPaise: Long?)
 
 data class MonthSummary(val monthStart: Long, val incomePaise: Long, val expensePaise: Long, val investedPaise: Long = 0, val endBalancePaise: Long? = null) {
@@ -186,6 +207,91 @@ object Insights {
         }
         if (latest.isEmpty()) return null
         return latest.values.sumOf { it.balancePaise!! }
+    }
+
+    fun dailyReport(
+        all: List<Transaction>, tracked: List<Transaction>, cycleStart: Long, now: Long,
+        dailyLimit: Long, weeklyLimit: Long,
+    ): DailyReport {
+        val day = 86_400_000L
+        val today0 = com.financebrain.ui.dayStart(now)
+        fun between(list: List<Transaction>, from: Long, to: Long) = list.filter { isSpend(it) && it.timestamp >= from && it.timestamp < to }
+        val todayRows = between(tracked, today0, today0 + day)
+        val todayPaise = todayRows.sumOf { it.amountPaise }
+
+        val cal = Calendar.getInstance().apply { timeInMillis = today0 }
+        val dow = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7           // Monday = 0 … Sunday = 6
+        val weekStart = today0 - dow * day
+        val weekPaise = between(tracked, weekStart, today0 + day).sumOf { it.amountPaise }
+
+        val last14 = (13 downTo 0).map { i ->
+            val s = today0 - i * day
+            val rows = between(tracked, s, s + day)
+            DayTotal(s, rows.sumOf { it.amountPaise }, rows.size)
+        }
+
+        val cycleRows = between(tracked, cycleStart, today0 + day)
+        val daysSoFar = ((today0 - com.financebrain.ui.dayStart(cycleStart)) / day).toInt().coerceAtLeast(0) + 1
+        val avgPerDay = cycleRows.sumOf { it.amountPaise } / daysSoFar
+
+        // Weekday against weekend, over the last eight weeks of everything the app has seen.
+        var wd = 0L; var wdDays = 0; var we = 0L; var weDays = 0
+        for (i in 0 until 56) {
+            val s = today0 - i * day
+            val paise = between(all, s, s + day).sumOf { it.amountPaise }
+            val d = Calendar.getInstance().apply { timeInMillis = s }.get(Calendar.DAY_OF_WEEK)
+            if (d == Calendar.SATURDAY || d == Calendar.SUNDAY) { we += paise; weDays++ } else { wd += paise; wdDays++ }
+        }
+        val weekdayAvg = if (wdDays > 0) wd / wdDays else 0L
+        val weekendAvg = if (weDays > 0) we / weDays else 0L
+
+        val biggest = cycleRows.groupBy { com.financebrain.ui.dayStart(it.timestamp) }
+            .map { (d, rows) -> DayTotal(d, rows.sumOf { it.amountPaise }, rows.size) }
+            .sortedByDescending { it.paise }.take(3)
+
+        // This cycle so far against the same number of days in the previous three cycles.
+        val prev = (1..3).map { i -> val s = com.financebrain.ui.shiftMonth(cycleStart, -i); s to com.financebrain.ui.monthEnd(s) }
+        val prevRows = prev.flatMap { (s, e) -> between(all, s, e) }
+        val prevDays = prev.sumOf { (s, e) -> ((e - s) / day).toInt() }.coerceAtLeast(1)
+        val usualPerDay = prevRows.groupBy { it.category }.mapValues { it.value.sumOf { t -> t.amountPaise } / prevDays }
+        val deltas = categoryTotals(cycleRows).map { c ->
+            CategoryDelta(c.category, c.paise, (usualPerDay[c.category] ?: 0L) * daysSoFar, c.count)
+        }
+        val hasHistory = prevRows.isNotEmpty()
+
+        val f = { p: Long -> com.financebrain.ui.formatRupees(p) }
+        val lines = ArrayList<String>()
+        if (dailyLimit > 0) {
+            lines += if (todayPaise > dailyLimit) "Over today's limit by ${f(todayPaise - dailyLimit)}. Nothing more today if you can help it."
+            else "${f(dailyLimit - todayPaise)} of today's ${f(dailyLimit)} still available."
+        }
+        if (weeklyLimit > 0) {
+            val left = 6 - dow
+            lines += if (weekPaise > weeklyLimit) "Over this week's limit by ${f(weekPaise - weeklyLimit)} with $left day${if (left == 1) "" else "s"} still to go."
+            else if (left > 0) "${f(weeklyLimit - weekPaise)} left for the week, about ${f((weeklyLimit - weekPaise) / left)} a day."
+            else "${f(weeklyLimit - weekPaise)} of the week's limit unspent."
+        }
+        if (avgPerDay > 0 && todayPaise > 0) {
+            val ratio = todayPaise.toDouble() / avgPerDay
+            if (ratio >= 1.5) lines += "Today is ${"%.1f".format(ratio)}× a normal day for you this month (${f(avgPerDay)})."
+            else if (ratio <= 0.5) lines += "Light day: well under your ${f(avgPerDay)} a day average."
+        }
+        val worst = deltas.filter { it.usualPaise > 0 }.maxByOrNull { it.deltaPaise }
+        if (worst != null && worst.deltaPaise > 500_00 && worst.paise > worst.usualPaise * 1.25) {
+            lines += "${worst.category} is running ${f(worst.deltaPaise)} above your usual for this point in the month. That is where the money is going."
+        } else if (!hasHistory && deltas.isNotEmpty()) {
+            lines += "${deltas.first().category} is the biggest bucket this month at ${f(deltas.first().paise)}. Comparisons against your usual start next month."
+        }
+        if (weekendAvg > 0 && weekdayAvg > 0 && weekendAvg > weekdayAvg * 1.5) {
+            lines += "Weekends cost ${f(weekendAvg)} a day against ${f(weekdayAvg)} on weekdays. Plan weekends, not weekdays."
+        }
+        todayRows.maxByOrNull { it.amountPaise }?.let { if (todayRows.size > 1 && it.amountPaise * 2 > todayPaise) lines += "One payment, ${it.counterparty}, is most of today at ${f(it.amountPaise)}." }
+
+        return DailyReport(
+            todayPaise, todayRows.size, categoryTotals(todayRows), todayRows.maxByOrNull { it.amountPaise },
+            weekPaise, weekStart, 6 - dow, last14, avgPerDay, daysSoFar, weekdayAvg, weekendAvg,
+            biggest, deltas, lines, dailyLimit, weeklyLimit,
+        )
     }
 
     fun topMerchants(list: List<Transaction>, n: Int = 5): List<Pair<String, Long>> =

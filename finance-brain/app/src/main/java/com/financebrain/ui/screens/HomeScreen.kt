@@ -133,6 +133,50 @@ fun HomeScreen(
             }
         }
 
+        // 1b. Today
+        state.today?.let { t ->
+            item {
+                val over = t.dailyLimitPaise > 0 && t.todayPaise > t.dailyLimitPaise
+                SectionCard(tint = if (over) p.red else p.purple) {
+                    Row(Modifier.fillMaxWidth().clickable { onOpen("spend:daily") }, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("SPENT TODAY", style = MaterialTheme.typography.labelSmall, color = p.t2)
+                            Text(formatRupees(t.todayPaise), style = MaterialTheme.typography.headlineMedium, color = if (over) p.red else p.t1, fontFamily = FontFamily.Monospace)
+                            Text(
+                                (if (t.todayCount == 0) "Nothing yet today" else "${t.todayCount} payment${if (t.todayCount == 1) "" else "s"}") +
+                                    (t.todayByCategory.firstOrNull()?.let { " · mostly ${it.category}" } ?: ""),
+                                style = MaterialTheme.typography.labelSmall, color = p.t2
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("THIS WEEK", style = MaterialTheme.typography.labelSmall, color = p.t2)
+                            Text(formatRupees(t.weekPaise), style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace, color = if (t.weeklyLimitPaise > 0 && t.weekPaise > t.weeklyLimitPaise) p.red else p.t1)
+                            if (t.weeklyLimitPaise > 0) Text("of ${compactRupees(t.weeklyLimitPaise)}", style = MaterialTheme.typography.labelSmall, color = p.t2)
+                        }
+                    }
+                    if (t.dailyLimitPaise > 0) {
+                        Spacer(Modifier.height(8.dp))
+                        LimitBar(t.todayPaise, t.dailyLimitPaise)
+                        Text(
+                            if (over) "Over today's limit by ${formatRupees(t.todayPaise - t.dailyLimitPaise)}" else "${formatRupees(t.dailyLeftPaise)} left of today's ${formatRupees(t.dailyLimitPaise)}",
+                            style = MaterialTheme.typography.labelSmall, color = if (over) p.red else p.t2
+                        )
+                    }
+                    if (t.weeklyLimitPaise > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        LimitBar(t.weekPaise, t.weeklyLimitPaise)
+                    }
+                    val tip = t.lines.firstOrNull { !it.startsWith("Over today") && !it.contains("still available") } ?: t.lines.firstOrNull()
+                    if (tip != null) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(tip, style = MaterialTheme.typography.bodySmall, color = p.t1)
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text("Where it goes and what to do", style = MaterialTheme.typography.labelSmall, color = p.gold, modifier = Modifier.clickable { onOpen("spend:daily") })
+                }
+            }
+        }
+
         // 2. How much do I have
         plan.netWorth?.let { nw ->
             item {
@@ -218,6 +262,17 @@ private fun Tile(label: String, value: String, color: Color, modifier: Modifier,
     Column(modifier.background(color.copy(alpha = 0.12f), RoundedCornerShape(12.dp)).border(1.dp, color.copy(alpha = 0.4f), RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = color)
         Text(value, style = MaterialTheme.typography.titleMedium, color = color, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** Used against a limit: green while under, red once over. */
+@Composable
+private fun LimitBar(used: Long, limit: Long) {
+    val p = P
+    val frac = (used.toFloat() / limit.coerceAtLeast(1)).coerceIn(0f, 1f)
+    Row(Modifier.fillMaxWidth().height(8.dp).background(p.bd, RoundedCornerShape(4.dp))) {
+        if (frac > 0f) Box(Modifier.weight(frac).height(8.dp).background(if (used > limit) p.red else if (frac > 0.8f) p.orange else p.green, RoundedCornerShape(4.dp)))
+        if (frac < 1f) Box(Modifier.weight(1f - frac).height(8.dp))
     }
 }
 

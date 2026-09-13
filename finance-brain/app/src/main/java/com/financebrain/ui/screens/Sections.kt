@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import com.financebrain.ui.formatDay
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -69,9 +71,10 @@ fun SpendScreen(state: HomeState, padding: PaddingValues, section: String, onSec
     Column(Modifier.padding(top = padding.calculateTopPadding() + 4.dp)) {
         ScreenHeader("Spend", formatCycle(state.month))
         Spacer(Modifier.height(8.dp))
-        Pills(listOf("activity" to "Activity", "categories" to "Categories", "recurring" to "Recurring"), section, onSection)
+        Pills(listOf("daily" to "Daily", "activity" to "Activity", "categories" to "Categories", "recurring" to "Recurring"), section, onSection)
         Spacer(Modifier.height(4.dp))
         when (section) {
+            "daily" -> LazyColumn(contentPadding = PaddingValues(14.dp, 6.dp, 14.dp, padding.calculateBottomPadding() + 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { dailySection(state, onOpen) }
             "activity" -> TransactionsScreen(state.allTransactions, PaddingValues(bottom = padding.calculateBottomPadding()), onOpen, showHeader = false, trackingStart = state.trackingStart)
             "categories" -> LazyColumn(contentPadding = PaddingValues(14.dp, 6.dp, 14.dp, padding.calculateBottomPadding() + 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item {
@@ -207,5 +210,119 @@ private fun PlanLine(label: String, paise: Long, color: androidx.compose.ui.grap
             if (sub != null) Text(sub, style = MaterialTheme.typography.labelSmall, color = p.t2)
         }
         Text(formatRupees(paise), style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace, color = color, fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal)
+    }
+}
+
+// ------------------------------------------------------------------ Daily
+
+/** Today, this week, where the money goes faster than usual, and what to do about it. */
+fun androidx.compose.foundation.lazy.LazyListScope.dailySection(state: HomeState, onOpen: (Transaction) -> Unit) {
+    val t = state.today ?: return
+    item {
+        val p = P
+        SectionCard(tint = if (t.dailyLimitPaise > 0 && t.todayPaise > t.dailyLimitPaise) p.red else null) {
+            SectionTitle("Today", "${t.todayCount} payments")
+            Text(formatRupees(t.todayPaise), style = MaterialTheme.typography.headlineMedium, fontFamily = FontFamily.Monospace, color = p.t1)
+            if (t.dailyLimitPaise > 0) Text(
+                if (t.todayPaise > t.dailyLimitPaise) "Over the ${formatRupees(t.dailyLimitPaise)} daily limit by ${formatRupees(t.todayPaise - t.dailyLimitPaise)}"
+                else "${formatRupees(t.dailyLeftPaise)} left of the ${formatRupees(t.dailyLimitPaise)} daily limit",
+                style = MaterialTheme.typography.bodySmall, color = if (t.todayPaise > t.dailyLimitPaise) p.red else p.t2
+            ) else Text("No daily limit set. Add one in Settings → Spending limits.", style = MaterialTheme.typography.labelSmall, color = p.t3)
+            if (t.todayByCategory.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                t.todayByCategory.forEach { c ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        CategoryDot(c.category, 22); Spacer(Modifier.width(8.dp))
+                        Text(c.category, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        Text(formatRupees(c.paise), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+            t.todayTop?.let { top ->
+                Spacer(Modifier.height(6.dp))
+                Text("Biggest: ${top.counterparty} ${formatRupees(top.amountPaise)}", style = MaterialTheme.typography.labelSmall, color = p.t2, modifier = Modifier.clickable { onOpen(top) })
+            }
+        }
+    }
+    item {
+        val p = P
+        SectionCard {
+            SectionTitle("This week", "Mon–Sun")
+            Text(formatRupees(t.weekPaise), style = MaterialTheme.typography.headlineSmall, fontFamily = FontFamily.Monospace, color = if (t.weeklyLimitPaise > 0 && t.weekPaise > t.weeklyLimitPaise) p.red else p.t1)
+            Text(
+                if (t.weeklyLimitPaise > 0) {
+                    if (t.weekPaise > t.weeklyLimitPaise) "Over the ${formatRupees(t.weeklyLimitPaise)} weekly limit by ${formatRupees(t.weekPaise - t.weeklyLimitPaise)} · ${t.daysLeftInWeek} days left"
+                    else "${formatRupees(t.weeklyLeftPaise)} left of ${formatRupees(t.weeklyLimitPaise)} · ${t.daysLeftInWeek} day${if (t.daysLeftInWeek == 1) "" else "s"} left"
+                } else "No weekly limit set. Add one in Settings → Spending limits.",
+                style = MaterialTheme.typography.bodySmall, color = p.t2
+            )
+            Spacer(Modifier.height(10.dp))
+            Text("Last 14 days", style = MaterialTheme.typography.labelSmall, color = p.t2)
+            Spacer(Modifier.height(4.dp))
+            BarChart(t.last14.map { it.paise }.toLongArray(), 13, p.purple, labels = listOf("2 wks ago", "1 wk ago", "today"))
+            Spacer(Modifier.height(6.dp))
+            Text("Average this month ${formatRupees(t.avgPerDayPaise)} a day over ${t.daysSoFar} days", style = MaterialTheme.typography.labelSmall, color = p.t2)
+        }
+    }
+    item {
+        val p = P
+        SectionCard(tint = p.orange) {
+            SectionTitle("Where you spend more", "vs your usual")
+            if (t.categoryDelta.isEmpty()) EmptyHint("Nothing spent this month yet.")
+            t.categoryDelta.forEach { d ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    CategoryDot(d.category, 26); Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(d.category, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            if (d.usualPaise > 0) "usually ${formatRupees(d.usualPaise)} by now" else "${d.count} payment${if (d.count == 1) "" else "s"}",
+                            style = MaterialTheme.typography.labelSmall, color = p.t2
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(formatRupees(d.paise), style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
+                        if (d.usualPaise > 0) Text(
+                            (if (d.deltaPaise >= 0) "+" else "−") + compactRupees(kotlin.math.abs(d.deltaPaise)),
+                            style = MaterialTheme.typography.labelSmall, color = if (d.deltaPaise > 0) p.red else p.green
+                        )
+                    }
+                }
+            }
+        }
+    }
+    item {
+        val p = P
+        SectionCard {
+            SectionTitle("Patterns")
+            if (t.weekdayAvgPaise > 0 || t.weekendAvgPaise > 0) {
+                Row(Modifier.fillMaxWidth()) {
+                    Column(Modifier.weight(1f)) { Text("Weekday", style = MaterialTheme.typography.labelSmall, color = p.t2); Text("${formatRupees(t.weekdayAvgPaise)} a day", style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace) }
+                    Column(Modifier.weight(1f)) { Text("Weekend", style = MaterialTheme.typography.labelSmall, color = p.t2); Text("${formatRupees(t.weekendAvgPaise)} a day", style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace, color = if (t.weekendAvgPaise > t.weekdayAvgPaise * 1.5) p.red else p.t1) }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (t.biggestDays.isNotEmpty()) {
+                Text("Heaviest days this month", style = MaterialTheme.typography.labelSmall, color = p.t2)
+                t.biggestDays.forEach { d ->
+                    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                        Text("${formatDay(d.dayStart)} · ${d.count} payments", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        Text(formatRupees(d.paise), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            }
+        }
+    }
+    item {
+        val p = P
+        SectionCard(tint = p.gold) {
+            SectionTitle("What to do")
+            if (t.lines.isEmpty()) Text("Set a daily or weekly limit and this fills in as the month goes.", style = MaterialTheme.typography.bodySmall, color = p.t2)
+            t.lines.forEach { l ->
+                Row(Modifier.padding(vertical = 4.dp)) {
+                    Text("→ ", style = MaterialTheme.typography.bodyMedium, color = p.gold)
+                    Text(l, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
     }
 }

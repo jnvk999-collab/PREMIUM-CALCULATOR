@@ -31,6 +31,7 @@ import com.financebrain.data.ZeroTolerance
 import com.financebrain.data.BalanceAnchor
 import com.financebrain.data.CategoryTotal
 import com.financebrain.data.Direction
+import com.financebrain.data.DailyReport
 import com.financebrain.data.Insights
 import com.financebrain.data.InvestmentLine
 import com.financebrain.data.LoanInfo
@@ -80,6 +81,8 @@ data class PlanState(
     val salaryDay: Int = 1,
     val investPct: Int = 20,
     val budgetPaise: Long = 0,
+    val dailyLimitPaise: Long = 0,
+    val weeklyLimitPaise: Long = 0,
     val daughterName: String = "",
     val expectedIncomePaise: Long = 0,
 )
@@ -105,6 +108,7 @@ data class HomeState(
     val monthBalance: MonthBalance = MonthBalance(null, null, null),
     val anchors: List<BalanceAnchor> = emptyList(),
     val wallet: Insights.BalanceBuild? = null,
+    val today: DailyReport? = null,
     val accountList: List<AccountView> = emptyList(),
     val trackingStart: Long = 0,
 ) {
@@ -218,11 +222,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val ignoredAccountsFlow = MutableStateFlow(FinanceBrainApp.get(app).ignoredAccounts())
     private val trackingStartFlow = MutableStateFlow(FinanceBrainApp.get(app).trackingStart)
     fun setTrackingStart(ts: Long) { appRef.trackingStart = ts; trackingStartFlow.value = ts }
+    private val limitsFlow = MutableStateFlow(FinanceBrainApp.get(app).dailyLimitPaise to FinanceBrainApp.get(app).weeklyLimitPaise)
 
     val state: StateFlow<HomeState> = combine(
         combine(_month, repo.transactions, repo.accounts, repo.balanceAnchors) { m, all, accounts, anchors -> arrayOf(m, all, accounts, anchors) },
-        ignoredAccountsFlow, trackingStartFlow,
-    ) { arr, ignoredAcc, trackingStart ->
+        ignoredAccountsFlow, trackingStartFlow, limitsFlow,
+    ) { arr, ignoredAcc, trackingStart, limits ->
         @Suppress("UNCHECKED_CAST")
         val m = arr[0] as Long; val all = arr[1] as List<Transaction>; val accounts = arr[2] as List<Account>; val anchors = arr[3] as List<BalanceAnchor>
         val end = monthEnd(m)
@@ -253,6 +258,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             investments = Insights.investments(tracked, recurring.filter { it.direction == Direction.DEBIT }),
             monthBalance = Insights.monthBalance(all, anchors, m, end, now),
             wallet = Insights.wallet(all, anchors, now + 1),
+            today = Insights.dailyReport(all, tracked, monthStart(now), now, limits.first, limits.second),
             anchors = anchors,
             accountList = all.filter { it.accountTail != null && it.accountKind != "INVEST" }
                 .groupBy { it.bank + "|" + it.accountTail }
@@ -343,7 +349,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             goals = goals, receivables = recv, informalLoans = loans,
             discipline = Planning.discipline(s.tracked, s.month, d.first, d.second, d.third, now),
             controlled = d.first, zero = d.second, entries = d.third,
-            salaryDay = appRef.salaryDay, investPct = appRef.investTargetPct, budgetPaise = appRef.monthlyBudgetPaise, daughterName = appRef.daughterName, expectedIncomePaise = appRef.expectedIncomePaise,
+            salaryDay = appRef.salaryDay, investPct = appRef.investTargetPct, budgetPaise = appRef.monthlyBudgetPaise, dailyLimitPaise = appRef.dailyLimitPaise, weeklyLimitPaise = appRef.weeklyLimitPaise, daughterName = appRef.daughterName, expectedIncomePaise = appRef.expectedIncomePaise,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanState())
 
@@ -358,6 +364,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setThemeMode(m: String) { appRef.themeMode = m; themeMode.value = m }
     fun setInvestPct(p: Int) { appRef.investTargetPct = p; _settingsTick.value++ }
     fun setBudget(paise: Long) { appRef.monthlyBudgetPaise = paise; _settingsTick.value++ }
+    fun setLimits(dailyPaise: Long, weeklyPaise: Long) { appRef.dailyLimitPaise = dailyPaise; appRef.weeklyLimitPaise = weeklyPaise; limitsFlow.value = dailyPaise to weeklyPaise; _settingsTick.value++ }
     fun setDaughterName(n: String) { appRef.daughterName = n; _settingsTick.value++ }
     fun setDailyAlert(enabled: Boolean, hour: Int) { appRef.dailyAlertEnabled = enabled; appRef.dailyAlertHour = hour; com.financebrain.alerts.DailyAlertWorker.schedule(getApplication()); _settingsTick.value++ }
 

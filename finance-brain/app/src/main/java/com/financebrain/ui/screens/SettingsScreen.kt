@@ -71,6 +71,7 @@ fun SettingsScreen(
     batteryExempt: Boolean = false,
     themeMode: String = "light",
     onThemeMode: (String) -> Unit = {},
+    onLimits: (Long, Long) -> Unit = { _, _ -> },
 ) {
     androidx.compose.runtime.LaunchedEffect(Unit) { onLoadUncounted() }
     LazyColumn(
@@ -104,6 +105,21 @@ fun SettingsScreen(
                     OutlinedButton(onClick = { onTrackingStart(com.financebrain.ui.monthStart(System.currentTimeMillis())) }) { Text("From this month") }
                     OutlinedButton(onClick = { onTrackingStart(0L) }) { Text("All history") }
                 }
+            }
+        }
+        item {
+            SectionCard {
+                SectionTitle("Spending limits")
+                var dl by androidx.compose.runtime.remember(plan.dailyLimitPaise) { androidx.compose.runtime.mutableStateOf(if (plan.dailyLimitPaise > 0) (plan.dailyLimitPaise / 100).toString() else "") }
+                var wl by androidx.compose.runtime.remember(plan.weeklyLimitPaise) { androidx.compose.runtime.mutableStateOf(if (plan.weeklyLimitPaise > 0) (plan.weeklyLimitPaise / 100).toString() else "") }
+                Text("Home shows today's spend against the daily limit and the week's against the weekly one. Weeks run Monday to Sunday.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    androidx.compose.material3.OutlinedTextField(dl, { v -> if (v.all(Char::isDigit)) dl = v }, label = { Text("Per day (₹)") }, singleLine = true, modifier = Modifier.weight(1f))
+                    androidx.compose.material3.OutlinedTextField(wl, { v -> if (v.all(Char::isDigit)) wl = v }, label = { Text("Per week (₹)") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = { onLimits((dl.toLongOrNull() ?: 0L) * 100, (wl.toLongOrNull() ?: 0L) * 100) }) { Text("Save limits") }
             }
         }
         item {

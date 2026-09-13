@@ -21,6 +21,13 @@ class FinanceBrainApp : Application() {
     fun dismissedReviews(): Set<String> = prefs.getStringSet("dismissed_reviews", emptySet()) ?: emptySet()
     fun dismissReview(id: String) { prefs.edit().putStringSet("dismissed_reviews", dismissedReviews() + id).apply() }
 
+    var dailyLimitPaise: Long
+        get() = prefs.getLong("daily_limit", 0L)
+        set(v) { prefs.edit().putLong("daily_limit", v).apply() }
+    var weeklyLimitPaise: Long
+        get() = prefs.getLong("weekly_limit", 0L)
+        set(v) { prefs.edit().putLong("weekly_limit", v).apply() }
+
     /** "light", "dark" or "system". Bright by default. */
     var themeMode: String
         get() = prefs.getString("theme_mode", "light") ?: "light"

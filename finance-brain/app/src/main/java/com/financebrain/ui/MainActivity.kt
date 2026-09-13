@@ -254,7 +254,7 @@ private fun App(vm: MainViewModel) {
                 { csvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "*/*")) },
                 accountRefs, ignoredAccounts, vm::setAccountIgnored, state.trackingStart, vm::setTrackingStart, vm::setExpectedIncome,
                 uncounted, vm::loadUncounted, vm::countUncounted,
-                { batteryLauncher.launch(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}"))) }, batteryExempt, themeMode = themeMode, onThemeMode = vm::setThemeMode)
+                { batteryLauncher.launch(android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:${context.packageName}"))) }, batteryExempt, themeMode = themeMode, onThemeMode = vm::setThemeMode, onLimits = vm::setLimits)
             else -> HomeScreen(state, plan, scan, padding, update, vm::downloadUpdate, vm::installUpdate, vm::dismissUpdate, vm::shiftMonth, { selected = it }, ::open, ::setBalanceFor, ::review)
         }
     }
