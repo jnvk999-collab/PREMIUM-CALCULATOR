@@ -72,6 +72,28 @@ Habits that make the biggest difference:
 6. **Read real books too.** Twenty minutes of bedtime reading (to them or by them) is the single strongest predictor of school success. No app replaces it.
 7. **Screens off an hour before bed.** Sleep is when the day's learning is stored.
 
+## If your child finds maths hard (grade 1–2)
+
+The maths module was built for exactly this case. What it does:
+
+- **Starts gentle.** Every skill has 4 levels. Level 1 for grade 2 addition is sums within 10; level 4 is within 100. A skill starts at level 1 and remembers where she reached.
+- **Moves at her pace.** Two right in a row moves the level up; one wrong moves it down. She is always working just above what she can already do, never far beyond it.
+- **Pictures she can count.** The "Show me" button draws the sum as ten-frames (rows of ten dots). Blue dots plus orange dots, or dots crossed out for taking away. Counting dots is how children learn to trust numbers before they can hold them in their head.
+- **Explains every mistake.** A wrong answer shows the dots and a one-line strategy in a teacher's words: "Start at 7 and count on 5", "Make 10 first", "Take away the tens first". She taps "Got it" when ready, no timer.
+- **Grade 2 skills in the order schools teach them:** Make 10 and 20 → Adding → Taking away → Tens and ones → Missing number → Times 2, 5, 10. Do them in that order, one skill per week, and do not move on until the skill shows level 3 or 4 in the Parent area.
+
+What to do at home, ten minutes a day:
+
+1. **Week 1 and 2: number bonds only.** "Make 10" in the app, then the same with real things: 10 spoons, hide some, how many are hidden? Every later sum depends on knowing 3+7, 4+6, 5+5 instantly.
+2. **Sit beside her and let her say the sum aloud** before she taps. "Seven plus five. Seven… eight, nine, ten, eleven, twelve." Talking is thinking.
+3. **Use the Show me button freely.** Counting dots is not cheating, it is the method. She will stop needing it on her own.
+4. **When she is wrong, read the hint together**, then ask her to try the same kind of sum again. Never say "no, wrong". Say "let's look".
+5. **Stop while she still wants more.** Ten minutes and a star chart beats thirty minutes and tears.
+6. **Maths in daily life.** Count coins at the shop, share biscuits equally, read the clock, measure flour. These matter more than any app.
+7. **Check the Parent area on Sunday.** A skill at level 1 after two weeks means she needs the concrete version (real objects) before the screen version.
+
+Children who are "poor at maths" in grade 2 are almost always missing number bonds and place value, not intelligence. Fix those two and everything after becomes easier.
+
 ## Ideas for the next version
 
 - Hindi and regional-language spelling lists.

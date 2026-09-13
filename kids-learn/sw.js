@@ -1,7 +1,7 @@
 /* Little Learners — service worker
    Cache-first so the app works with no signal once installed.
    Bump CACHE whenever you upload a new index.html.                        */
-const CACHE = 'little-learners-v1';
+const CACHE = 'little-learners-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

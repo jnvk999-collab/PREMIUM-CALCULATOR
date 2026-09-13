@@ -82,6 +82,15 @@ input.f:focus,select.f:focus{outline:none;border-color:var(--p2)}
 .letters button.used{opacity:.25}
 .slots{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;min-height:56px;margin:10px 0}
 .slots span{width:44px;height:52px;border-radius:10px;background:#f5f3ff;border:2px dashed var(--p2);display:grid;place-items:center;font-size:26px;font-weight:900;text-transform:uppercase}
+.speak.sm{padding:8px 14px;font-size:15px}
+.tf{display:inline-grid;grid-template-columns:repeat(5,1fr);gap:4px;padding:5px;border:2px solid var(--line);border-radius:8px;margin:3px;background:#fff}
+.tf.g{grid-template-columns:repeat(10,auto)}
+.tf i{width:16px;height:16px;border-radius:50%;background:var(--math)}
+.tf i.b{background:var(--star)} .tf i.q{background:#fff;border:2px dashed var(--star)} .tf i.x{background:#fecaca;border:2px solid var(--bad)}
+.visual{text-align:center;margin-top:10px}
+.explain{margin-top:8px;text-align:center}
+.hint{background:#fffbeb;border:2px solid #fde68a;border-radius:12px;padding:10px 12px;font-size:16px;font-weight:600;margin-top:8px;text-align:left}
+.pill.lv{background:#dbeafe;color:var(--math);box-shadow:none;padding:3px 8px;font-size:12px}
 .speak{background:#fff;border:3px solid var(--line);border-radius:999px;padding:12px 20px;font-size:18px;font-weight:800;color:var(--ink);display:inline-flex;gap:8px;align-items:center}
 .passage{font-size:19px;line-height:1.7;background:#f0fdf4;border-radius:14px;padding:16px;border:2px solid #bbf7d0}
 .result{text-align:center;padding:10px 0}
@@ -133,7 +142,7 @@ th{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5p
    Everything runs on the device. Progress is kept in localStorage.
    ============================================================ */
 'use strict';
-const APP_VERSION = 'v1';
+const APP_VERSION = 'v2';
 const $ = s => document.querySelector(s);
 const app = $('#app');
 const GRADES = ['KG','1','2','3','4','5'];
@@ -146,7 +155,8 @@ const DEFAULT = {
   profile:null, pin:'',
   stars:0, streak:0, lastDay:'', days:{},         // days: {YYYY-MM-DD: minutes}
   sessions:[],                                     // {d,module,skill,grade,correct,total,secs}
-  badges:{}, daily:{}                              // daily: {YYYY-MM-DD: score}
+  badges:{}, daily:{},                             // daily: {YYYY-MM-DD: score}
+  levels:{}                                        // levels: {'grade|skill': 1-4}
 };
 let S = load();
 function load(){ try{ const j=JSON.parse(localStorage.getItem('ll_state')||'null'); return j?Object.assign({},DEFAULT,j):structuredClone(DEFAULT);}catch(e){return structuredClone(DEFAULT);} }
@@ -234,24 +244,30 @@ const PASSAGES = {
 
 /* ---------- maths question generator ---------- */
 const MATH_SKILLS = {
-  KG:  [['count','Counting'],['add','Adding to 10'],['compare','Bigger or smaller']],
-  '1': [['add','Adding to 20'],['sub','Taking away'],['compare','Compare numbers'],['count','Counting on']],
-  '2': [['add','Add to 100'],['sub','Subtract to 100'],['mul','Times 2, 5, 10'],['missing','Missing number']],
+  KG:  [['count','Counting'],['add','Adding to 10'],['bond','Make 5 and 10'],['compare','Bigger or smaller']],
+  '1': [['bond','Make 10'],['add','Adding'],['sub','Taking away'],['compare','Compare numbers'],['count','Counting on']],
+  '2': [['bond','Make 10 and 20'],['add','Adding'],['sub','Taking away'],['place','Tens and ones'],['missing','Missing number'],['mul','Times 2, 5, 10']],
   '3': [['add','Add to 1000'],['sub','Subtract to 1000'],['mul','Times tables'],['div','Division'],['missing','Missing number']],
   '4': [['mul','Multiply 2-digit'],['div','Division'],['frac','Fractions'],['missing','Missing number'],['word','Word problems']],
   '5': [['mul','Long multiply'],['div','Long division'],['frac','Fractions'],['dec','Decimals'],['word','Word problems']],
 };
-function mathQ(grade, skill){
-  const g = grade==='KG'?0:+grade;
-  let q,a,type='num';
+/* Level 1 is the gentlest, 4 the hardest for that class. Each maths round starts
+   at the child's saved level and moves up after two right in a row, down after a wrong one. */
+const RANGE = {0:[5,10,10,10], 1:[10,20,20,30], 2:[10,20,50,100], 3:[20,100,500,1000], 4:[100,1000,1000,1000], 5:[100,1000,1000,1000]};
+function mathQ(grade, skill, lvl){
+  const g = grade==='KG'?0:+grade; lvl = lvl||2;
+  const max = RANGE[Math.min(g,5)][lvl-1];
+  let q,a,type='num',x,y;
   switch(skill){
     case 'count': { const n=rnd(1,g?20:10); const em=pick(['🍎','⭐','🐟','🎈','🚗','🌸']); q=em.repeat(n).match(/.{1,10}/gu).join('\n'); a=n; type='choice'; break; }
-    case 'add': { const max=[10,20,100,1000][Math.min(g,3)]; const x=rnd(1,max-1), y=rnd(1,max-x); q=`${x} + ${y}`; a=x+y; break; }
-    case 'sub': { const max=[10,20,100,1000][Math.min(g,3)]; const x=rnd(2,max), y=rnd(1,x-1); q=`${x} − ${y}`; a=x-y; break; }
+    case 'add': { x=rnd(1,max-1); y=rnd(1,max-x); q=`${x} + ${y}`; a=x+y; return {q,a,type,x,y,op:'+'}; }
+    case 'sub': { x=rnd(2,max); y=rnd(1,x-1); q=`${x} − ${y}`; a=x-y; return {q,a,type,x,y,op:'-'}; }
+    case 'bond': { const t=g===0?(lvl<=2?5:10):(lvl<=2?10:20); x=rnd(0,t); q=`${x} + ▢ = ${t}`; a=t-x; return {q,a,type,x,y:a,op:'?'}; }
+    case 'place': { const T=rnd(1,9), O=rnd(0,9); if(lvl<=2){ q=`${T} tens and ${O} ones = ?`; a=T*10+O; } else { q=Math.random()<.5?`How many tens in ${T*10+O}?`:`How many ones in ${T*10+O}?`; a=q.includes('tens')?T:O; } return {q,a,type,T,O,op:'p'}; }
     case 'compare': { const max=g?100:10; const x=rnd(0,max), y=rnd(0,max); q=`Which is bigger?`; type='pick'; const opts=[x,y]; a=Math.max(x,y); if(x===y) a=x; return {q,a,type,opts:x===y?[x,y+1]:opts,a:x===y?y+1:a}; }
-    case 'mul': { let x,y; if(g<=2){x=pick([2,5,10]);y=rnd(1,10);} else if(g===3){x=rnd(2,10);y=rnd(1,10);} else if(g===4){x=rnd(11,25);y=rnd(2,9);} else {x=rnd(12,99);y=rnd(11,25);} q=`${x} × ${y}`; a=x*y; break; }
+    case 'mul': { if(g<=2){x=lvl<=1?2:lvl===2?pick([2,10]):pick([2,5,10]);y=rnd(1,lvl<=2?5:10); q=`${x} × ${y}`; a=x*y; return {q,a,type,x,y,op:'x'};} if(g===3&&lvl<=2){x=pick([2,3,4,5,10]);y=rnd(1,10);} else if(g===3){x=rnd(2,10);y=rnd(1,10);} else if(g===3){x=rnd(2,10);y=rnd(1,10);} else if(g===4){x=rnd(11,25);y=rnd(2,9);} else {x=rnd(12,99);y=rnd(11,25);} q=`${x} × ${y}`; a=x*y; break; }
     case 'div': { let y,r; if(g<=3){y=rnd(2,10);r=rnd(1,10);} else if(g===4){y=rnd(2,12);r=rnd(2,25);} else {y=rnd(3,25);r=rnd(10,60);} q=`${y*r} ÷ ${y}`; a=r; break; }
-    case 'missing': { const max=g<=2?50:200; const x=rnd(1,max), y=rnd(1,max); q=`${x} + ▢ = ${x+y}`; a=y; break; }
+    case 'missing': { const m=g<=2?[10,20,30,50][lvl-1]:[50,100,200,500][lvl-1]; x=rnd(1,m-1); y=rnd(1,m-x); q=`${x} + ▢ = ${x+y}`; a=y; return {q,a,type,x,y,op:'?'}; }
     case 'frac': { const d=pick([2,3,4,5,8,10]); const n=rnd(1,d-1); const whole=d*rnd(2,g>=5?12:6); q=`${n}/${d} of ${whole}`; a=whole/d*n; break; }
     case 'dec': { const x=(rnd(10,999)/10), y=(rnd(10,999)/10); if(Math.random()<.5){q=`${x} + ${y}`;a=+(x+y).toFixed(1);} else {const [b,s]=x>y?[x,y]:[y,x]; q=`${b} − ${s}`; a=+(b-s).toFixed(1);} break; }
     case 'word': { const t=pick([
@@ -263,6 +279,27 @@ function mathQ(grade, skill){
       ])(); q=t[0]; a=t[1]; type='word'; break; }
   }
   return {q,a,type};
+}
+/* A one-line strategy in words, the way a teacher would say it */
+function hintFor(it){
+  const {x,y,a,op}=it;
+  if(op==='+'){ if(y<=5) return `Start at ${x} and count on ${y}: ${Array.from({length:y},(_,k)=>x+k+1).join(', ')}.`; if(x+y===10) return `${x} and ${y} are friends that make 10.`; if(x+y<=20&&x<10) return `Make 10 first: ${x} + ${10-x} = 10, then 10 + ${y-(10-x)} = ${a}.`; return `Add the tens, then the ones: ${Math.floor(x/10)*10} + ${Math.floor(y/10)*10} = ${Math.floor(x/10)*10+Math.floor(y/10)*10}, then + ${x%10+y%10} = ${a}.`; }
+  if(op==='-'){ if(y<=5) return `Start at ${x} and count back ${y}: ${Array.from({length:y},(_,k)=>x-k-1).join(', ')}.`; return `Take away the tens first: ${x} − ${Math.floor(y/10)*10} = ${x-Math.floor(y/10)*10}, then − ${y%10} = ${a}.`; }
+  if(op==='?'){ return `Count up from ${x} until you reach ${x+a}. That takes ${a} steps.`; }
+  if(op==='x'){ return `${x} × ${y} means ${y} groups of ${x}: ${Array(y).fill(x).join(' + ')} = ${a}.`; }
+  if(op==='p'){ return `${it.T} tens = ${it.T*10}, and ${it.O} ones = ${it.O}. Together: ${it.T*10+it.O}.`; }
+  return '';
+}
+/* Ten-frames the child can count. Only for small numbers; big sums get the hint text alone. */
+function visualFor(it){
+  const {x,y,op}=it; const dot=c=>`<i class="${c}"></i>`;
+  const frames=cells=>{ let h=''; for(let i=0;i<cells.length;i+=10) h+=`<span class="tf">${cells.slice(i,i+10).join('')}</span>`; return h; };
+  if(op==='+'&&x+y<=30) return frames([...Array(x).fill(dot('a')),...Array(y).fill(dot('b'))]);
+  if(op==='-'&&x<=30) return frames([...Array(x-y).fill(dot('a')),...Array(y).fill(dot('x'))]);
+  if(op==='?'&&x+it.a<=30) return frames([...Array(x).fill(dot('a')),...Array(it.a).fill(dot('q'))]);
+  if(op==='x'&&x*y<=30) return Array(y).fill(0).map(()=>`<span class="tf g">${dot('a').repeat(x)}</span>`).join('');
+  if(op==='p'&&it.T) return Array(it.T).fill(0).map(()=>`<span class="tf">${dot('a').repeat(10)}</span>`).join('')+`<span class="tf">${dot('b').repeat(it.O)}</span>`;
+  return '';
 }
 function choicesFor(a){ const set=new Set([a]); let guard=0; while(set.size<4&&guard++<50){ const d=a+pick([-3,-2,-1,1,2,3,10,-10]); if(d>=0) set.add(d);} return shuffle([...set]); }
 
@@ -317,19 +354,20 @@ const TIPS=['Fifteen minutes every day beats two hours on Sunday.','Read the sto
 
 /* ---------- generic quiz engine ---------- */
 let Q=null;
-function startQuiz(cfg){ Q=Object.assign({i:0,correct:0,t0:Date.now(),wrong:[]},cfg); go('quiz'); }
+function startQuiz(cfg){ Q=Object.assign({i:0,correct:0,t0:Date.now(),wrong:[],items:[],run:0},cfg); Q.n=Q.n||Q.items.length; go('quiz'); }
 function renderQuiz(){
-  if(Q.i>=Q.items.length) return finishQuiz();
-  const it=Q.items[Q.i], n=Q.items.length;
+  if(Q.i>=Q.n) return finishQuiz();
+  if(Q.gen && !Q.items[Q.i]) Q.items[Q.i]=Q.gen(Q.level);
+  const it=Q.items[Q.i], n=Q.n;
   const secs=Q.timed? Math.max(0,Q.timed-Math.floor((Date.now()-Q.t0)/1000)) : null;
   app.innerHTML=`${header(Q.title,Q.color)}
   <div class="card">
-    <div class="qhead"><span class="muted">Question ${Q.i+1} of ${n}</span>${secs!=null?`<span class="pill timer" id="tm">⏱ ${secs}s</span>`:`<span class="muted">✅ ${Q.correct}</span>`}</div>
+    <div class="qhead"><span class="muted">Question ${Q.i+1} of ${n}</span>${secs!=null?`<span class="pill timer" id="tm">⏱ ${secs}s</span>`:`<span class="muted">${Q.level?`<span class="pill lv">Level ${Q.level}</span> `:''}✅ ${Q.correct}</span>`}</div>
     <div class="prog"><i style="width:${Q.i/n*100}%"></i></div>
     <div id="body"></div>
     <div class="fb" id="fb"></div>
   </div>`;
-  if(secs!=null){ timerH=setInterval(()=>{ const s=Math.max(0,Q.timed-Math.floor((Date.now()-Q.t0)/1000)); const e=$('#tm'); if(e) e.textContent='⏱ '+s+'s'; if(s<=0){ clearInterval(timerH); Q.i=Q.items.length; finishQuiz(); } },250); }
+  if(secs!=null){ timerH=setInterval(()=>{ const s=Math.max(0,Q.timed-Math.floor((Date.now()-Q.t0)/1000)); const e=$('#tm'); if(e) e.textContent='⏱ '+s+'s'; if(s<=0){ clearInterval(timerH); Q.i=Q.n; finishQuiz(); } },250); }
   const body=$('#body');
   if(it.type==='choice'||it.type==='pick'||it.type==='mcq'){
     const opts = it.opts || choicesFor(it.a);
@@ -339,14 +377,25 @@ function renderQuiz(){
   } else {
     body.innerHTML=`<div class="qtext ${it.type==='word'?'small':''}">${esc(it.q)}</div><div class="ans" id="ans">&nbsp;</div>
       <div class="keypad">${[1,2,3,4,5,6,7,8,9].map(k=>`<button data-k="${k}">${k}</button>`).join('')}<button data-k="." ${it.type==='dec'?'':'style="visibility:hidden"'}>.</button><button data-k="0">0</button><button data-k="⌫">⌫</button><button class="go" data-k="go" style="grid-column:1/-1">Check ✔</button></div>`;
+    const vis=it.op?visualFor(it):'';
+    if(vis) body.insertAdjacentHTML('beforeend',`<div class="center" style="margin-top:10px"><button class="speak sm" id="showme">👀 Show me</button></div><div class="visual hidden" id="vis">${vis}</div>`);
+    if(vis) $('#showme').onclick=()=>{ $('#vis').classList.toggle('hidden'); };
     let v='';
     body.querySelector('.keypad').onclick=e=>{ const b=e.target.closest('button'); if(!b) return; const k=b.dataset.k; if(k==='go'){ if(v==='') return; const ok=Math.abs(parseFloat(v)-it.a)<1e-9; $('#ans').textContent=v; $('#ans').style.color=ok?'var(--ok)':'var(--bad)'; body.querySelectorAll('button').forEach(x=>x.disabled=true); after(ok,it); return; } if(k==='⌫') v=v.slice(0,-1); else if(v.length<7 && !(k==='.'&&v.includes('.'))) v+=k; $('#ans').textContent=v||' '; };
   }
-  function after(ok,it){ const fb=$('#fb'); if(ok){ Q.correct++; fb.className='fb ok'; fb.textContent=pick(['Correct! 🎉','Great job! ⭐','Yes! 👏','Brilliant! 🌟']); } else { fb.className='fb bad'; fb.textContent='Not quite. Answer: '+it.a; Q.wrong.push(it); } Q.i++; setTimeout(()=>{ if(screen==='quiz') renderQuiz(); }, ok?700:1600); }
+  function after(ok,it){
+    const fb=$('#fb'); let wait=ok?700:1600;
+    if(ok){ Q.correct++; Q.run++; fb.className='fb ok'; fb.textContent=pick(['Correct! 🎉','Great job! ⭐','Yes! 👏','Brilliant! 🌟']); if(Q.level&&Q.run>=2&&Q.level<4){ Q.level++; Q.run=0; fb.textContent+=' Level up!'; } }
+    else { Q.run=0; fb.className='fb bad'; fb.textContent='Not quite. Answer: '+it.a; Q.wrong.push(it); if(Q.level&&Q.level>1) Q.level--;
+      const h=it.op?hintFor(it):''; const vis=it.op?visualFor(it):'';
+      if(h||vis){ wait=4500; body.insertAdjacentHTML('beforeend',`<div class="explain">${vis?`<div class="visual">${vis}</div>`:''}${h?`<div class="hint">💡 ${esc(h)}</div>`:''}<button class="btn sm" id="next" style="margin-top:10px">Got it, next ▶</button></div>`); const v=$('#vis'); if(v) v.remove(); const sm=$('#showme'); if(sm) sm.parentElement.remove(); $('#next').onclick=()=>{ clearTimeout(Q._t); if(screen==='quiz') renderQuiz(); }; $('#next').scrollIntoView({block:'end',behavior:'smooth'}); }
+    }
+    Q.i++; Q._t=setTimeout(()=>{ if(screen==='quiz') renderQuiz(); }, wait);
+  }
 }
 function finishQuiz(){
   clearInterval(timerH);
-  const n=Q.items.length, secs=Math.round((Date.now()-Q.t0)/1000);
+  const n=Q.n, secs=Math.round((Date.now()-Q.t0)/1000);
   const stars = Q.correct*Q.starsPer + (Q.correct===n&&n>0 ? 10 : 0) + (Q.bonus||0);
   addStars(stars); recordSession(Q.module,Q.skill,Q.correct,n,secs);
   if(Q.onDone) Q.onDone(Q.correct,n);
@@ -370,13 +419,15 @@ function renderMathMenu(){
   app.innerHTML=`${header('🧮 Maths','var(--math)')}
     <div class="card"><label class="f">Practise for</label><select class="f" id="mg">${GRADES.map(x=>`<option value="${x}" ${x===g?'selected':''}>${gradeLabel(x)}</option>`).join('')}</select></div>
     <div id="skills"></div>`;
-  const draw=()=>{ const gg=$('#mg').value; $('#skills').innerHTML=`<div class="grid">${MATH_SKILLS[gg].map(([k,l])=>`<button class="tile math" data-k="${k}"><span class="ic">${({count:'🔢',add:'➕',sub:'➖',mul:'✖️',div:'➗',compare:'⚖️',missing:'❓',frac:'🍕',dec:'🔟',word:'📝'})[k]}</span><div class="t">${l}</div><div class="s">10 questions</div></button>`).join('')}</div>`;
+  const draw=()=>{ const gg=$('#mg').value; $('#skills').innerHTML=`<div class="grid">${MATH_SKILLS[gg].map(([k,l])=>`<button class="tile math" data-k="${k}"><span class="ic">${({count:'🔢',add:'➕',sub:'➖',mul:'✖️',div:'➗',compare:'⚖️',missing:'❓',frac:'🍕',dec:'🔟',word:'📝',bond:'🔗',place:'🧱'})[k]}</span><div class="t">${l}</div><div class="s">${S.levels[gg+'|'+k]?'Level '+S.levels[gg+'|'+k]+' of 4':'10 questions'}</div></button>`).join('')}</div>`;
     $('#skills').querySelectorAll('.tile').forEach(b=>b.onclick=()=>launchMath(gg,b.dataset.k,b.textContent.trim())); };
   $('#mg').onchange=draw; draw();
 }
 function launchMath(g,k,label){
-  const items=[]; for(let i=0;i<10;i++){ const m=mathQ(g,k); if(m.type==='num'&&k==='dec') m.type='dec'; items.push(m); }
-  startQuiz({title:'Maths',color:'var(--math)',module:'math',skill:k,items,starsPer:3,again:()=>launchMath(g,k,label)});
+  const key=g+'|'+k; const level=S.levels[key]||1;
+  const gen=lv=>{ const m=mathQ(g,k,lv); if(m.type==='num'&&k==='dec') m.type='dec'; return m; };
+  startQuiz({title:'Maths',color:'var(--math)',module:'math',skill:k,gen,n:10,level,starsPer:3,again:()=>launchMath(g,k,label),
+    onDone:()=>{ S.levels[key]=Q.level; save(); }});
 }
 
 /* ---------- times tables ---------- */
@@ -453,7 +504,7 @@ function renderDaily(){
   if(S.daily[d]!=null){ app.innerHTML=`${header('📅 Daily challenge','var(--daily)')}<div class="card result"><div class="big">✅</div><h2>Done for today!</h2><p class="muted">You scored ${S.daily[d]}/10. A new challenge unlocks tomorrow.</p><button class="btn ghost" onclick="go('home')">Home</button></div>`; return; }
   const g=S.profile.grade, items=[];
   const skills=MATH_SKILLS[g].map(s=>s[0]);
-  for(let i=0;i<6;i++){ items.push(mathQ(g,pick(skills))); }
+  for(let i=0;i<6;i++){ const k=pick(skills); items.push(mathQ(g,k,S.levels[g+'|'+k]||2)); }
   for(let i=0;i<4;i++){ const w=pick(WORDS[g]); const wrong=shuffle(WORDS[g].filter(x=>x!==w)).slice(0,3).map(x=>misspell(x)); const opts=shuffle([w,...shuffle([misspell(w),misspell(w),...wrong]).filter((x,k,arr)=>x!==w&&arr.indexOf(x)===k).slice(0,3)]); items.push({q:'Which word is spelled correctly?',opts,a:w,type:'mcq'}); }
   startQuiz({title:'📅 Daily challenge',color:'var(--daily)',module:'daily',skill:'daily',items:shuffle(items),starsPer:3,bonus:30,onDone:(c)=>{ S.daily[todayKey()]=c; save(); }});
 }
@@ -493,6 +544,8 @@ function renderParent(){
     ${weak.length?`<div style="margin-top:6px">⚠️ Needs practice:<ul style="margin:4px 0;padding-left:20px">${weak.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:'<div class="muted" style="margin-top:6px">No weak spots found yet (needs at least 10 answers per skill).</div>'}
     ${strong.length?`<div style="margin-top:6px">💪 Mastered (try the next class up):<ul style="margin:4px 0;padding-left:20px">${strong.map(w=>`<li>${w}</li>`).join('')}</ul></div>`:''}
   </div>
+  <div class="card"><b>Maths levels (${gradeLabel(p.grade)})</b><div class="muted" style="margin:4px 0 8px">Each skill runs from level 1 (gentlest) to 4. The level moves up after two right in a row and down after a wrong one, so she is always working just above what she can already do.</div>
+    ${MATH_SKILLS[p.grade].map(([k,l])=>{ const lv=S.levels[p.grade+'|'+k]||0; return `<div class="row" style="margin:4px 0"><span style="flex:2">${l}</span><div class="bar" style="flex:3"><i style="width:${lv*25}%;background:var(--math)"></i></div><span class="muted" style="flex:0 0 70px;text-align:right">${lv?'Level '+lv:'not yet'}</span></div>`; }).join('')}</div>
   <div class="card"><b>Recent rounds</b><table style="margin-top:8px"><tr><th>Date</th><th>Activity</th><th>Score</th></tr>${sess.slice(-8).reverse().map(s=>`<tr><td>${s.d.slice(5)}</td><td>${s.module} · ${esc(String(s.skill).split(':').pop())}</td><td>${s.correct}/${s.total}</td></tr>`).join('')||'<tr><td colspan="3" class="muted">Nothing yet</td></tr>'}</table></div>
   <div class="card"><b>Settings</b>
     <label class="f">Child's class</label><select class="f" id="pg">${GRADES.map(x=>`<option value="${x}" ${x===p.grade?'selected':''}>${gradeLabel(x)}</option>`).join('')}</select>
