@@ -8,6 +8,7 @@
  * The reminder goes at the first time; if the laptop was off then, it still goes as soon as the bot
  * is up, as long as the end time (default: 30 minutes later) has not passed. Days can be a range
  * (Mon-Fri), a list (Mon,Wed,Fri), "daily" or left out (= every day). Each line fires once a day.
+ * Write \n inside a message for a line break.
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,6 +22,19 @@ const DEFAULT_FILE =
   '# The reminder is sent at the start time (or as soon as the bot is up, if before the end time).\n' +
   '10:00-10:15  Mon-Fri  ⏰ Mark attendance now - before 10:15 AM\n' +
   '14:00-14:15  Mon-Fri  ⏰ Mark afternoon attendance now - before 2:15 PM\n';
+
+// health checklist, 7 times a day (\n in a message = new line)
+const HEALTH_TEXT = '💪 *Daily health check*\\n' +
+  '1. 🚶 15,000 steps today\\n' +
+  '2. 🍽️ Under 1,500 calories\\n' +
+  '3. 📱 Log every meal in Healthify\\n' +
+  '4. 💊 Omega-3 + multivitamin taken?\\n' +
+  '5. ⚖️ Goal: minus 5 kg this month\\n' +
+  '6. 🏋️ Weights 8:00 AM · 🚶 Walk 8:45-9:45 AM';
+const HEALTH_BLOCK =
+  '\n# Health checklist, 7 times a day\n' +
+  ['07:45-08:00', '11:00-11:30', '13:00-13:30', '15:00-15:30', '17:30-18:00', '19:30-20:00', '21:30-22:00']
+    .map(t => `${t}  daily  ${HEALTH_TEXT}`).join('\n') + '\n';
 
 function findFile() {
   try {
@@ -36,10 +50,13 @@ function ensureFile() {
   if (f) {
     // an untouched file from an earlier default (Mon-Sat) is upgraded to the current one
     const old = DEFAULT_FILE.replace(/Mon-Fri/g, 'Mon-Sat');
-    if (fs.readFileSync(f, 'utf8') === old) { fs.writeFileSync(f, DEFAULT_FILE); return true; }
-    return false;
+    let cur = fs.readFileSync(f, 'utf8'), changed = false;
+    if (cur === old) { cur = DEFAULT_FILE; changed = true; }
+    if (!/health check/i.test(cur)) { cur = cur.replace(/\s*$/, '\n') + HEALTH_BLOCK; changed = true; }
+    if (changed) fs.writeFileSync(f, cur);
+    return changed;
   }
-  fs.writeFileSync(path.join(DIR, 'reminders.txt'), DEFAULT_FILE);
+  fs.writeFileSync(path.join(DIR, 'reminders.txt'), DEFAULT_FILE + HEALTH_BLOCK);
   return true;
 }
 
@@ -70,7 +87,7 @@ function parseLine(raw, n) {
   const dm = rest.match(/^(daily|all|everyday|(?:[a-z]{3}[a-z]*(?:-[a-z]{3}[a-z]*)?)(?:,[a-z]{3}[a-z]*(?:-[a-z]{3}[a-z]*)?)*)\s+(.+)$/i);
   if (dm && parseDays(dm[1])) { days = parseDays(dm[1]); rest = dm[2].trim(); }
   if (!rest) return { error: `line ${n}: no message` };
-  return { id: `${n}:${m[1]}:${rest}`, start, end: Math.max(end, start), days, text: rest };
+  return { id: `${n}:${m[1]}:${rest}`, start, end: Math.max(end, start), days, text: rest.replace(/\\n/g, '\n') };
 }
 
 function load() {
@@ -116,7 +133,7 @@ function describe() {
   const { list, errors, file } = load();
   const fmt = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   const dayText = d => d.size === 7 ? 'daily' : [1, 2, 3, 4, 5, 6, 0].filter(i => d.has(i)).map(i => DAYS[i][0].toUpperCase() + DAYS[i].slice(1)).join(',');
-  const lines = list.map(r => `${fmt(r.start)}${r.end !== r.start ? '-' + fmt(r.end) : ''}  ${dayText(r.days)}  ${r.text}`);
+  const lines = list.map(r => `${fmt(r.start)}${r.end !== r.start ? '-' + fmt(r.end) : ''}  ${dayText(r.days)}  ${r.text.split('\n')[0]}`);
   return { file, lines, errors };
 }
 
