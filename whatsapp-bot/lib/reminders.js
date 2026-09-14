@@ -31,10 +31,18 @@ const HEALTH_TEXT = '💪 *Daily health check*\\n' +
   '4. 💊 Omega-3 + multivitamin taken?\\n' +
   '5. ⚖️ Goal: minus 5 kg this month\\n' +
   '6. 🏋️ Weights 8:00 AM · 🚶 Walk 8:45-9:45 AM';
+const MORNING = [
+  ['07:30-07:45', '🌅 *Good morning!* Weights at 8:00, walk 8:45-9:45. Take omega-3 + multivitamin.'],
+  ['08:00-08:15', '🏋️ *Weights workout now* (8:00 AM)'],
+  ['08:30-08:45', '🚶 *Walk starts at 8:45* - shoes on. Target 15,000 steps today.'],
+  ['09:30-09:45', '✅ *Walk ending 9:45* - log breakfast in Healthify. Under 1,500 calories today.'],
+];
 const HEALTH_BLOCK =
-  '\n# Health checklist, 7 times a day\n' +
-  ['07:45-08:00', '11:00-11:30', '13:00-13:30', '15:00-15:30', '17:30-18:00', '19:30-20:00', '21:30-22:00']
+  '\n# Morning routine\n' + MORNING.map(([t, m]) => `${t}  daily  ${m}`).join('\n') +
+  '\n# Health checklist through the day\n' +
+  ['11:00-11:30', '13:00-13:30', '15:00-15:30', '17:30-18:00', '19:30-20:00', '21:30-22:00']
     .map(t => `${t}  daily  ${HEALTH_TEXT}`).join('\n') + '\n';
+const OLD_MORNING = /^07:45-08:00  daily  .*\r?\n/m;
 
 function findFile() {
   try {
@@ -53,6 +61,7 @@ function ensureFile() {
     let cur = fs.readFileSync(f, 'utf8'), changed = false;
     if (cur === old) { cur = DEFAULT_FILE; changed = true; }
     if (!/health check/i.test(cur)) { cur = cur.replace(/\s*$/, '\n') + HEALTH_BLOCK; changed = true; }
+    else if (OLD_MORNING.test(cur)) { cur = cur.replace(OLD_MORNING, MORNING.map(([t, m]) => `${t}  daily  ${m}`).join('\n') + '\n'); changed = true; }
     if (changed) fs.writeFileSync(f, cur);
     return changed;
   }
