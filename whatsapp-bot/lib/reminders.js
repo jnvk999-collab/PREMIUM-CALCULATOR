@@ -42,6 +42,11 @@ const HEALTH_BLOCK =
   '\n# Health checklist through the day\n' +
   ['11:00-11:30', '13:00-13:30', '15:00-15:30', '17:30-18:00', '19:30-20:00', '21:30-22:00']
     .map(t => `${t}  daily  ${HEALTH_TEXT}`).join('\n') + '\n';
+const NIGHT = [
+  ['22:30-22:45', '🌙 *Day-end check (10:30 PM)*\\n🚶 15,000 steps done?\\n📱 All meals logged in Healthify?\\n🍽️ Stayed under 1,500 calories?\\n💊 Omega-3 + multivitamin taken?'],
+  ['23:30-23:45', '😴 *11:30 PM - wind down.* Weights at 8:00 tomorrow. Sleep well.'],
+];
+const NIGHT_BLOCK = '# Night\n' + NIGHT.map(([t, m]) => `${t}  daily  ${m}`).join('\n') + '\n';
 const OLD_MORNING = /^07:45-08:00  daily  .*\r?\n/m;
 
 function findFile() {
@@ -62,10 +67,11 @@ function ensureFile() {
     if (cur === old) { cur = DEFAULT_FILE; changed = true; }
     if (!/health check/i.test(cur)) { cur = cur.replace(/\s*$/, '\n') + HEALTH_BLOCK; changed = true; }
     else if (OLD_MORNING.test(cur)) { cur = cur.replace(OLD_MORNING, MORNING.map(([t, m]) => `${t}  daily  ${m}`).join('\n') + '\n'); changed = true; }
+    if (/health check/i.test(cur) && !/^22:30/m.test(cur)) { cur = cur.replace(/\s*$/, '\n') + NIGHT_BLOCK; changed = true; }
     if (changed) fs.writeFileSync(f, cur);
     return changed;
   }
-  fs.writeFileSync(path.join(DIR, 'reminders.txt'), DEFAULT_FILE + HEALTH_BLOCK);
+  fs.writeFileSync(path.join(DIR, 'reminders.txt'), DEFAULT_FILE + HEALTH_BLOCK + NIGHT_BLOCK);
   return true;
 }
 
